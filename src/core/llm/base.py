@@ -1,5 +1,9 @@
 from enum import StrEnum
 
+from langchain_core.language_models import BaseChatModel
+
+LLM = BaseChatModel
+
 
 class LLMProvider(StrEnum):
     OPENAI = "openai"

@@ -1,4 +1,5 @@
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,7 @@ from src.api import api_router
 from src.core.vectorstores.registry import close_connections, open_connections
 from src.middleware.auth import AuthMiddleware
 from src.middleware.context import ContextMiddleware
+from src.middleware.errors import ErrorMiddleware
 
 
 class HealthResponse(BaseModel):
@@ -31,8 +33,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="ai-services", version="0.1.0", lifespan=lifespan)
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
 app.add_middleware(ContextMiddleware)
 app.add_middleware(AuthMiddleware)
+app.add_middleware(ErrorMiddleware)
 
 app.include_router(api_router)
 

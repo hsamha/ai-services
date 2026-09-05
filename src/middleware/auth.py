@@ -1,4 +1,3 @@
-import hmac
 import os
 from functools import lru_cache
 
@@ -6,9 +5,11 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from src.core.hashing import matches
+
 SERVICE_KEY_HEADER = "X-API-Key"
 
-API_KEY_ENV = "API_KEY"
+API_KEY_HASH_ENV = "API_KEY_HASH"
 
 # Reachable without a key.
 OPEN_PATHS: frozenset[str] = frozenset(
@@ -36,12 +37,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _accepted(key: str) -> bool:
-        expected = _service_key()
+        expected = _service_key_hash()
         if expected is None:
             return False
-        return hmac.compare_digest(key, expected)
+        return matches(key, expected)
 
 
 @lru_cache
-def _service_key() -> str | None:
-    return os.environ.get(API_KEY_ENV) or None
+def _service_key_hash() -> str | None:
+    return os.environ.get(API_KEY_HASH_ENV) or None

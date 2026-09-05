@@ -8,10 +8,12 @@ from src.core.embeddings.base import PROVIDER_BY_MODEL, Embedder, EmbeddingProvi
 from src.settings import get_settings
 
 
+def current_model() -> str:
+    return get_context().embedding_model or get_settings().embedding_model
+
+
 def get_embedder() -> Embedder:
-    context = get_context()
-    model = context.embedding_model or get_settings().embedding_model
-    return _build(context.provider_key, model)
+    return _build(get_context().provider_key, current_model())
 
 
 @lru_cache(maxsize=32)

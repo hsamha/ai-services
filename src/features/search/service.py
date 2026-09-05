@@ -1,6 +1,4 @@
-from fastapi import APIRouter, status
-
-from src.features.search import service
+from src.core.vectorstores.registry import get_store
 from src.features.search.schemas import (
     AddChunksRequest,
     AddChunksResponse,
@@ -14,50 +12,47 @@ from src.features.search.schemas import (
     SearchResponse,
 )
 
-router = APIRouter(prefix="/collections", tags=["collections"])
 
-
-@router.post("", response_model=CollectionCreated, status_code=status.HTTP_201_CREATED)
 async def create_collection(body: CreateCollectionRequest) -> CollectionCreated:
     """Create a collection, or report that it was already there."""
-    return await service.create_collection(body)
+    created = await get_store().create_collection(body.name, recreate=body.recreate)
+    return CollectionCreated(collection=body.name, created=created)
 
 
-@router.get("", response_model=CollectionsResponse)
 async def list_collections() -> CollectionsResponse:
     """Every collection currently stored."""
-    return await service.list_collections()
+    return CollectionsResponse(collections=await get_store().list_collections())
 
 
-@router.delete("/{collection}", response_model=DeleteResponse)
 async def delete_collection(collection: str) -> DeleteResponse:
     """Remove a collection and everything in it."""
-    return await service.delete_collection(collection)
+    return DeleteResponse(deleted=await get_store().delete_collection(collection))
 
 
-@router.get("/{collection}/count", response_model=CollectionCount)
 async def count_chunks(collection: str) -> CollectionCount:
     """How many chunks the collection holds."""
-    return await service.count_chunks(collection)
+    count = await get_store().count(collection)
+    return CollectionCount(collection=collection, count=count)
 
 
-@router.post(
-    "/{collection}/chunks",
-    response_model=AddChunksResponse,
-    status_code=status.HTTP_201_CREATED,
-)
 async def add_chunks(collection: str, body: AddChunksRequest) -> AddChunksResponse:
     """Store chunks, embedding them on the way in."""
-    return await service.add_chunks(collection, body)
+    ids = await get_store().add_chunks(collection, body.chunks)
+    return AddChunksResponse(ids=ids)
 
 
-@router.post("/{collection}/search", response_model=SearchResponse)
 async def search(collection: str, body: SearchRequest) -> SearchResponse:
     """Find the chunks closest to the query, optionally narrowed by metadata."""
-    return await service.search(collection, body)
+    hits = await get_store().search(
+        collection,
+        body.query,
+        limit=body.limit,
+        filters=body.filters,
+        score_threshold=body.score_threshold,
+    )
+    return SearchResponse(hits=hits)
 
 
-@router.delete("/{collection}/chunks", response_model=DeleteResponse)
 async def delete_chunks(collection: str, body: DeleteChunksRequest) -> DeleteResponse:
     """Remove specific chunks by id."""
-    return await service.delete_chunks(collection, body)
+    return DeleteResponse(deleted=await get_store().delete_chunks(collection, body.ids))

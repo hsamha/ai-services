@@ -8,11 +8,12 @@ from src.core.llm.base import LLM, PROVIDER_BY_MODEL, LLMProvider
 from src.settings import get_settings
 
 
+def current_model() -> str:
+    return get_context().llm_model or get_settings().llm_model
+
+
 def get_llm() -> LLM:
-    """The model for the request being handled, or the configured one."""
-    context = get_context()
-    model = context.llm_model or get_settings().llm_model
-    return _build(context.provider_key, model)
+    return _build(get_context().provider_key, current_model())
 
 
 @lru_cache(maxsize=32)

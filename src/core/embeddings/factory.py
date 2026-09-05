@@ -5,7 +5,9 @@ from fastapi import HTTPException, status
 
 from src.context import get_context
 from src.core.embeddings import openai
-from src.core.embeddings.base import PROVIDER_BY_MODEL, Embedder, EmbeddingProvider
+from src.core.embeddings.base import Embedder
+from src.core.embeddings.constants import PROVIDER_BY_MODEL
+from src.core.embeddings.enums import EmbeddingProvider
 from src.settings import get_settings
 
 

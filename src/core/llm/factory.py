@@ -5,7 +5,9 @@ from fastapi import HTTPException, status
 
 from src.context import get_context
 from src.core.llm import openai
-from src.core.llm.base import LLM, PROVIDER_BY_MODEL, LLMProvider
+from src.core.llm.base import LLM
+from src.core.llm.constants import PROVIDER_BY_MODEL
+from src.core.llm.enums import LLMProvider
 from src.settings import get_settings
 
 _BUILDERS: dict[LLMProvider, Callable[[str, str], LLM]] = {

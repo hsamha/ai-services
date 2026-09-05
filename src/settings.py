@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.core.vectorstores.base import ChromaMode, VectorStoreProvider
+from src.core.vectorstores.enums import ChromaMode, VectorStoreProvider
 
 
 class Settings(BaseSettings):

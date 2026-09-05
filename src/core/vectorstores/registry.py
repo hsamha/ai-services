@@ -3,7 +3,8 @@ from functools import lru_cache
 from src.context import get_context
 from src.core.embeddings.factory import get_embedder
 from src.core.vectorstores import chroma, qdrant
-from src.core.vectorstores.base import VectorStore, VectorStoreBackend, VectorStoreProvider
+from src.core.vectorstores.base import VectorStore, VectorStoreBackend
+from src.core.vectorstores.enums import VectorStoreProvider
 from src.settings import get_settings
 
 

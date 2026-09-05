@@ -1,26 +1,7 @@
-from enum import StrEnum
 from typing import Protocol
 
 from src.core.embeddings.base import Embedder
 from src.core.types import Chunk, Metadata, SearchHit
-
-
-class VectorStoreProvider(StrEnum):
-    """The vector databases this service can talk to."""
-
-    QDRANT = "qdrant"
-    CHROMA = "chroma"
-
-
-class ChromaMode(StrEnum):
-    """Where a Chroma database keeps its data."""
-
-    # In the API process. Nothing to run, nothing kept: emptied on restart.
-    MEMORY = "memory"
-    # A folder on disk beside the service. Survives a restart.
-    PERSISTENT = "persistent"
-    # A Chroma server of its own, reached over HTTP.
-    SERVER = "server"
 
 
 class VectorStore(Protocol):

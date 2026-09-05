@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 
 from src.core.embeddings.base import Embedder
 from src.core.types import Chunk, Metadata, SearchHit
-from src.core.vectorstores.base import ChromaMode
+from src.core.vectorstores.enums import ChromaMode
 from src.settings import get_settings
 
 

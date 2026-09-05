@@ -1,11 +1,16 @@
+from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import HTTPException, status
-from langchain_openai import ChatOpenAI
 
 from src.context import get_context
+from src.core.llm import openai
 from src.core.llm.base import LLM, PROVIDER_BY_MODEL, LLMProvider
 from src.settings import get_settings
+
+_BUILDERS: dict[LLMProvider, Callable[[str, str], LLM]] = {
+    LLMProvider.OPENAI: openai.build,
+}
 
 
 def current_model() -> str:
@@ -20,12 +25,13 @@ def get_llm() -> LLM:
 def _build(api_key: str, model: str) -> LLM:
     """One model client per key and model, kept for reuse."""
     provider = PROVIDER_BY_MODEL.get(model)
+    builder = _BUILDERS.get(provider) if provider else None
 
-    if provider == LLMProvider.OPENAI:
-        return ChatOpenAI(model=model, api_key=api_key)
+    if builder is None:
+        available = ", ".join(sorted(PROVIDER_BY_MODEL))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown model {model!r}. Available: {available}.",
+        )
 
-    available = ", ".join(sorted(PROVIDER_BY_MODEL))
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Unknown model {model!r}. Available: {available}.",
-    )
+    return builder(api_key, model)

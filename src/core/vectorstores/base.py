@@ -1,8 +1,7 @@
 from enum import StrEnum
 from typing import Protocol
 
-from langchain_core.embeddings import Embeddings
-
+from src.core.embeddings.base import Embedder
 from src.core.types import Chunk, Metadata, SearchHit
 
 
@@ -77,7 +76,7 @@ class VectorStoreBackend(Protocol):
         """Close it again. Called once, when the service stops."""
         ...
 
-    def build(self, embedder: Embeddings) -> VectorStore:
+    def build(self, embedder: Embedder) -> VectorStore:
         """A store on the open connection, embedding with the caller's model."""
         ...
 

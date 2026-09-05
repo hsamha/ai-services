@@ -1,8 +1,11 @@
 from enum import StrEnum
+from typing import Protocol
 
-from langchain_core.language_models import BaseChatModel
 
-LLM = BaseChatModel
+class LLM(Protocol):
+
+    async def ask(self, prompt: str) -> str:
+        ...
 
 
 class LLMProvider(StrEnum):

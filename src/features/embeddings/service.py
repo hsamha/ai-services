@@ -3,7 +3,7 @@ from src.features.embeddings.schemas import EmbedResponse
 
 
 async def embed(texts: list[str]) -> EmbedResponse:
-    vectors = await get_embedder().aembed_documents(texts)
+    vectors = await get_embedder().embed_texts(texts)
     return EmbedResponse(
         vectors=vectors,
         model=current_model(),

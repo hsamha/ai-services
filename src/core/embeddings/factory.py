@@ -1,11 +1,17 @@
+from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import HTTPException, status
-from langchain_openai import OpenAIEmbeddings
 
 from src.context import get_context
+from src.core.embeddings import openai
 from src.core.embeddings.base import PROVIDER_BY_MODEL, Embedder, EmbeddingProvider
 from src.settings import get_settings
+
+
+_BUILDERS: dict[EmbeddingProvider, Callable[[str, str], Embedder]] = {
+    EmbeddingProvider.OPENAI: openai.build,
+}
 
 
 def current_model() -> str:
@@ -19,12 +25,13 @@ def get_embedder() -> Embedder:
 @lru_cache(maxsize=32)
 def _build(api_key: str, model: str) -> Embedder:
     provider = PROVIDER_BY_MODEL.get(model)
+    builder = _BUILDERS.get(provider) if provider else None
 
-    if provider == EmbeddingProvider.OPENAI:
-        return OpenAIEmbeddings(model=model, api_key=api_key)
+    if builder is None:
+        available = ", ".join(sorted(PROVIDER_BY_MODEL))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown embedding model {model!r}. Available: {available}.",
+        )
 
-    available = ", ".join(sorted(PROVIDER_BY_MODEL))
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Unknown embedding model {model!r}. Available: {available}.",
-    )
+    return builder(api_key, model)

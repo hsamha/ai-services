@@ -10,11 +10,10 @@ pydantic-settings
 # LangChain
 langchain-core
 langchain-openai
-langchain-qdrant
-langchain-chroma
 
 # Providers
 openai
+chromadb
 qdrant-client
 
 # Async I/O

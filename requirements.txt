@@ -1,6 +1,3 @@
-
-# TODO: add versions
-
 # Web
 fastapi
 uvicorn[standard]
@@ -10,10 +7,17 @@ python-multipart
 pydantic
 pydantic-settings
 
-# Providers (async clients only)
+# LangChain
+langchain-core
+langchain-openai
+langchain-qdrant
+langchain-chroma
+
+# Providers
 openai
 qdrant-client
 
 # Async I/O
+anyio
 httpx
 aiofiles

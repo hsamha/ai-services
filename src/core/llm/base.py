@@ -1,5 +1,15 @@
-"""The language model contract.
+from enum import StrEnum
 
-Defines what any chat provider must offer: a complete response, or the same
-response streamed.
-"""
+
+class LLMProvider(StrEnum):
+    OPENAI = "openai"
+
+
+PROVIDER_BY_MODEL: dict[str, LLMProvider] = {
+    "gpt-4o-mini": LLMProvider.OPENAI,
+    "gpt-4o": LLMProvider.OPENAI,
+    "gpt-4.1": LLMProvider.OPENAI,
+    "gpt-4.1-mini": LLMProvider.OPENAI,
+    "gpt-5": LLMProvider.OPENAI,
+    "gpt-5-mini": LLMProvider.OPENAI,
+}

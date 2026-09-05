@@ -1,6 +1,32 @@
-"""Configuration loaded from the environment.
+from functools import lru_cache
 
-Service auth keys, the vector database connection and collection, chunking and
-retrieval parameters, the default providers, and each provider's model names.
-Never holds a caller's provider key -- that arrives with the request.
-"""
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.core.vectorstores.base import ChromaMode, VectorStoreProvider
+
+
+class Settings(BaseSettings):
+    """Values read from the environment, or from a .env file beside the code."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    llm_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-small"
+    vector_store: VectorStoreProvider = VectorStoreProvider.QDRANT
+
+    qdrant_url: str = "http://localhost:6333"
+
+    chroma_mode: ChromaMode = ChromaMode.MEMORY
+    chroma_path: str = "./chroma_storage"
+    chroma_host: str = "localhost"
+    chroma_port: int = 8000
+
+    chunk_size: int = 300
+    chunk_overlap: int = 50
+
+    top_k: int = 5
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

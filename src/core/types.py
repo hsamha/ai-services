@@ -1,6 +1,18 @@
-"""Shared domain vocabulary.
 
-The handful of shapes that providers and features exchange: a source document,
-a chunk of one, and a retrieval result with its score. Independent of any
-provider or web framework.
-"""
+
+from pydantic import BaseModel, Field
+
+MetadataValue = str | int | float | bool
+Metadata = dict[str, MetadataValue]
+
+
+class Chunk(BaseModel):
+    text: str
+    metadata: Metadata = Field(default_factory=dict)
+    id: str | None = None
+
+
+class SearchHit(BaseModel):
+    text: str
+    score: float
+    metadata: Metadata = Field(default_factory=dict)

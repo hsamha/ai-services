@@ -1,5 +1,14 @@
-"""The embedding contract.
+from enum import StrEnum
 
-Defines what any embedding provider must offer: turning documents and queries
-into vectors, and reporting the model and vector size it produces.
-"""
+from langchain_core.embeddings import Embeddings
+
+Embedder = Embeddings
+
+class EmbeddingProvider(StrEnum):
+    OPENAI = "openai"
+
+PROVIDER_BY_MODEL: dict[str, EmbeddingProvider] = {
+    "text-embedding-3-small": EmbeddingProvider.OPENAI,
+    "text-embedding-3-large": EmbeddingProvider.OPENAI,
+    "text-embedding-ada-002": EmbeddingProvider.OPENAI,
+}

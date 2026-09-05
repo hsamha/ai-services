@@ -31,13 +31,14 @@ docker compose down           # stop AND delete the containers (data survives)
 |---|---|
 | `requirements.txt` | `docker compose up -d --build api` |
 | `Dockerfile` | `docker compose up -d --build api` |
-| Python code in `src/` | `docker compose up -d --build api` |
+| Python code in `src/` | **nothing** -- it reloads on save |
 | `.env` | `docker compose up -d api` (no rebuild — it's read at start) |
 | `docker-compose.yml` | `docker compose up -d` |
 
-**The one rule:** the image is a frozen snapshot taken at build time. Anything copied *into* the
-image (`src/`, installed packages) needs `--build` to take effect. Anything read at *runtime*
-(`.env`, ports) just needs a restart.
+**The one rule:** the image is a frozen snapshot taken at build time. Installed packages live in it,
+so changing `requirements.txt` needs `--build`. Your `src/` is mounted from disk instead of baked
+in, so code changes reload by themselves. Anything read at start (`.env`, ports) needs a restart but
+no rebuild.
 
 If a rebuild seems to ignore your change, force a clean one:
 

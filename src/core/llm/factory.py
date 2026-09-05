@@ -1,5 +1,5 @@
-"""LLM factory.
+"""Language model provider selection.
 
-get_llm(provider, provider_key) -> LLM. Resolves the model name from settings
-for the chosen provider and caches clients by (provider, model, hashed key).
+Chooses the provider for a request, resolves its model from configuration, and
+reuses connections across requests rather than reconnecting each time.
 """

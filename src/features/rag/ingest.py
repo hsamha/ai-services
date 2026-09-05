@@ -1,5 +1,5 @@
-"""RAG ingestion service.
+"""Adding documents to the knowledge base.
 
-Takes raw text or an uploaded file, splits it into chunks, embeds them in
-batches, and upserts them into the vector store with their document metadata.
+Takes text or an uploaded file, splits it into overlapping pieces, turns those
+into vectors in batches, and stores them with their source details.
 """

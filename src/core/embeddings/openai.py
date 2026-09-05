@@ -1,5 +1,4 @@
-"""OpenAI embedding provider.
+"""OpenAI embeddings.
 
-Implements the Embedder protocol on top of AsyncOpenAI, batching document
-embedding requests.
+Fulfils the embedding contract against OpenAI, sending documents in batches.
 """

@@ -1,5 +1,5 @@
-"""VectorStore factory.
+"""Vector store selection.
 
-get_vector_store(provider) -> VectorStore, built from settings. The underlying
-client is an application-level singleton, not per request.
+Builds the configured vector database client. The connection is opened once for
+the whole service, not per request.
 """

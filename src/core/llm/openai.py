@@ -1,4 +1,4 @@
-"""OpenAI chat provider.
+"""OpenAI chat.
 
-Implements the LLM protocol on top of AsyncOpenAI chat completions.
+Fulfils the language model contract against OpenAI's chat endpoint.
 """

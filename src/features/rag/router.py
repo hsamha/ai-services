@@ -1,7 +1,6 @@
-"""RAG HTTP routes.
+"""Question answering routes.
 
-Ingest (raw text and file upload), search and query endpoints. Reads the
-per-request headers (provider key, LLM provider, embedding provider) as route
-parameters and assembles the RAG services from the factories -- the only place
-construction happens.
+Endpoints to add documents (as text or an uploaded file), search them, ask a
+question, and remove a document. Reads the per-request provider settings from
+the request headers and assembles the services this feature needs.
 """

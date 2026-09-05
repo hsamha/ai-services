@@ -1,5 +1,5 @@
-"""RAG request and response models.
+"""Question answering request and response shapes.
 
-IngestRequest/IngestResponse, QueryRequest/QueryResponse, SearchResponse and
-Citation -- the public API contract for the feature.
+What callers send and receive: documents to add, a question to ask, and the
+answer with the passages it was drawn from.
 """

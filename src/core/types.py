@@ -1,5 +1,6 @@
-"""Shared domain types used across providers and features.
+"""Shared domain vocabulary.
 
-Document, Chunk and SearchHit -- the vocabulary the embedder, vector store and
-RAG services exchange. Provider-agnostic and free of any FastAPI import.
+The handful of shapes that providers and features exchange: a source document,
+a chunk of one, and a retrieval result with its score. Independent of any
+provider or web framework.
 """

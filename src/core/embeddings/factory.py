@@ -1,6 +1,5 @@
-"""Embedder factory.
+"""Embedding provider selection.
 
-get_embedder(provider, provider_key) -> Embedder. Resolves the model name from
-settings for the chosen provider and caches clients by
-(provider, model, hashed key) so HTTP pools are reused across requests.
+Chooses the provider for a request, resolves its model from configuration, and
+reuses connections across requests rather than reconnecting each time.
 """

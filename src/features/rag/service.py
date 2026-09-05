@@ -1,5 +1,5 @@
-"""RAG query service.
+"""Answering a question from stored documents.
 
-Embeds the question, retrieves matching chunks from the vector store, builds
-the grounded prompt, calls the LLM, and returns the answer with citations.
+Finds the passages closest to the question, builds a grounded prompt from them,
+asks the model, and returns the answer with its sources.
 """

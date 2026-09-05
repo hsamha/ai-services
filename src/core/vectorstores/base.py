@@ -1,5 +1,5 @@
-"""VectorStore protocol.
+"""The vector store contract.
 
-The typed contract every vector store implements: ensure_collection, upsert,
-search and delete over Chunk/SearchHit. All methods are async.
+Defines what any vector database must offer: preparing a collection, storing
+chunks with their vectors, searching by similarity, and deleting.
 """

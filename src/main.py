@@ -1,8 +1,7 @@
-"""FastAPI application factory.
+"""Service entry point.
 
-Builds the app, registers the auth middleware and error handlers, mounts the
-API router, and manages the Qdrant client's lifespan (open on startup, close on
-shutdown).
+Creates the application, wires up its startup and shutdown, and exposes the
+liveness check.
 """
 
 from fastapi import FastAPI
@@ -10,7 +9,7 @@ from pydantic import BaseModel
 
 
 class HealthResponse(BaseModel):
-    """Liveness payload returned by GET /health."""
+    """Liveness payload."""
 
     status: str
     service: str

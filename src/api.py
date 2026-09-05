@@ -1,5 +1,5 @@
-"""Top-level API router.
+"""Public API surface.
 
-Aggregates the feature routers under the /api/v1 prefix. Feature modules are
+Collects every feature's routes under a single versioned prefix. Features are
 mounted here and nowhere else.
 """

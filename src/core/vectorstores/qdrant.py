@@ -1,5 +1,5 @@
-"""Qdrant vector store.
+"""Qdrant storage.
 
-Implements the VectorStore protocol on top of AsyncQdrantClient, storing the
-chunk text and its document metadata in the point payload.
+Fulfils the vector store contract against Qdrant, keeping each chunk's text and
+its source details alongside the vector.
 """

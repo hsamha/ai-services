@@ -1,5 +1,5 @@
-"""RAG prompt templates.
+"""Question answering prompt text.
 
-The system prompt and the template that renders retrieved chunks into the
-context block sent to the LLM.
+The instructions given to the model and the template that lays out the
+retrieved passages beneath the question.
 """

@@ -1,5 +1,5 @@
-"""Embedder protocol.
+"""The embedding contract.
 
-The typed contract every embedding provider implements: embed_documents,
-embed_query, plus the model name and vector dimension. All methods are async.
+Defines what any embedding provider must offer: turning documents and queries
+into vectors, and reporting the model and vector size it produces.
 """

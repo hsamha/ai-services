@@ -1,5 +1,5 @@
-"""LLM protocol.
+"""The language model contract.
 
-The typed contract every chat provider implements: complete() and stream().
-All methods are async.
+Defines what any chat provider must offer: a complete response, or the same
+response streamed.
 """

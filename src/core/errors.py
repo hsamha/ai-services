@@ -1,6 +1,6 @@
-"""Application error hierarchy and FastAPI exception handlers.
+"""Application errors and how they reach the client.
 
-Defines AppError and its subclasses (auth, bad request, upstream provider
-failure, embedding/collection mismatch) and maps them to a single JSON error
-body shape. Provider keys must never appear in an error response.
+Defines the failure cases the service can report -- unauthorised, malformed
+request, upstream provider failure, mismatched collection -- and renders them
+all in one consistent response shape. Secrets never appear in an error.
 """

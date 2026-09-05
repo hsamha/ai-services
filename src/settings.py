@@ -1,6 +1,6 @@
-"""Application settings, loaded from the environment via pydantic-settings.
+"""Configuration loaded from the environment.
 
-Holds the service auth keys, Qdrant connection and collection config, chunking
-parameters, the default LLM/embedding providers, and each provider's model
-names. Never holds a provider API key -- that arrives per request as a header.
+Service auth keys, the vector database connection and collection, chunking and
+retrieval parameters, the default providers, and each provider's model names.
+Never holds a caller's provider key -- that arrives with the request.
 """

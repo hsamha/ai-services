@@ -1,6 +1,5 @@
-"""Service authentication middleware.
+"""Service authentication.
 
-Validates the X-API-Key header against the configured service keys using a
-constant-time comparison, returning 401 otherwise. Unguarded paths: /health,
-/docs, /openapi.json.
+Rejects any request that does not carry a valid service key, comparing in
+constant time. The health check and the interactive docs stay open.
 """

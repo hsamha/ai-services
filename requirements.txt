@@ -1,0 +1,16 @@
+# Web
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Config
+pydantic
+pydantic-settings
+
+# Providers (async clients only)
+openai
+qdrant-client
+
+# Async I/O
+httpx
+aiofiles

@@ -8,9 +8,13 @@ from chromadb.api.models.Collection import Collection
 from fastapi import HTTPException, status
 
 from src.core.embeddings.base import Embedder
+from src.core.embeddings.constants import dimensions_for
+from src.core.embeddings.factory import get_embedding_model_name
 from src.core.types import Chunk, Metadata, SearchHit
 from src.core.vectorstores.enums import ChromaMode
 from src.settings import get_settings
+
+_MAX_RECORDS = 100
 
 
 class ChromaStore:
@@ -80,6 +84,58 @@ class ChromaStore:
         )
         return ids
 
+    async def add_records(self, collection: str, chunks: list[Chunk]) -> list[str]:
+        """Store points without embedding them, under a placeholder vector.
+
+        A whole document is kept to be read back, not to be compared against.
+        The vector is a formality, so it is the same for every record.
+        """
+        if not chunks:
+            return []
+
+        found = await self._open(collection)
+        ids = [chunk.id or str(uuid4()) for chunk in chunks]
+        placeholder = _placeholder_vector()
+
+        await to_thread.run_sync(
+            partial(
+                found.add,
+                ids=ids,
+                embeddings=[placeholder for _ in chunks],
+                documents=[chunk.text for chunk in chunks],
+                metadatas=[dict(chunk.metadata) or None for chunk in chunks],
+            )
+        )
+        return ids
+
+    async def get_records(
+        self,
+        collection: str,
+        *,
+        filters: Metadata | None = None,
+        limit: int | None = None,
+    ) -> list[Chunk]:
+        """Read the points whose metadata matches, with no similarity involved."""
+        found = await self._open(collection)
+
+        answer = await to_thread.run_sync(
+            partial(
+                found.get,
+                where=build_filter(filters),
+                limit=limit if limit is not None else _MAX_RECORDS,
+                include=["documents", "metadatas"],
+            )
+        )
+
+        ids = answer.get("ids") or []
+        documents = answer.get("documents") or []
+        metadatas = answer.get("metadatas") or []
+
+        return [
+            Chunk(id=str(point_id), text=str(text), metadata=dict(metadata or {}))
+            for point_id, text, metadata in zip(ids, documents, metadatas, strict=True)
+        ]
+
     async def search(
         self,
         collection: str,
@@ -138,6 +194,21 @@ class ChromaStore:
         return await to_thread.run_sync(
             partial(self._client.get_collection, collection, embedding_function=None)
         )
+
+
+def _placeholder_vector() -> list[float]:
+    """A vector of the configured model's size, pointing one way.
+
+    Chroma takes its size from the first vectors written, so this has to match
+    what the embedder will produce for everything else in the collection.
+    """
+    size = dimensions_for(get_embedding_model_name())
+    if size is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Vector size for embedding model {get_embedding_model_name()!r} is unknown.",
+        )
+    return [1.0] + [0.0] * (size - 1)
 
 
 def build_filter(filters: Metadata | None) -> dict[str, object] | None:

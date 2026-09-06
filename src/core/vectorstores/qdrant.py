@@ -13,6 +13,10 @@ from src.settings import get_settings
 _TEXT_KEY = "text"
 _METADATA_KEY = "metadata"
 
+# How many records a filtered read returns when the caller does not say. High
+# enough to hold every chunk of a document, which is what asks for them all.
+_MAX_RECORDS = 100
+
 
 class QdrantStore:
     def __init__(
@@ -84,6 +88,56 @@ class QdrantStore:
         await self._client.upsert(collection_name=collection, points=points)
         return ids
 
+    async def add_records(self, collection: str, chunks: list[Chunk]) -> list[str]:
+        """Store points without embedding them, under a placeholder vector"""
+        if not chunks:
+            return []
+
+        await self._require(collection)
+        placeholder = await self._placeholder_vector(collection)
+
+        ids = [chunk.id or str(uuid4()) for chunk in chunks]
+        points = [
+            models.PointStruct(
+                id=point_id,
+                vector=placeholder,
+                payload={_TEXT_KEY: chunk.text, _METADATA_KEY: dict(chunk.metadata)},
+            )
+            for point_id, chunk in zip(ids, chunks, strict=True)
+        ]
+
+        await self._client.upsert(collection_name=collection, points=points)
+        return ids
+
+    async def get_records(
+        self,
+        collection: str,
+        *,
+        filters: Metadata | None = None,
+        limit: int | None = None,
+    ) -> list[Chunk]:
+        """Read the points whose metadata matches, with no similarity involved."""
+        await self._require(collection)
+
+        found, _ = await self._client.scroll(
+            collection_name=collection,
+            scroll_filter=build_filter(filters),
+            limit=limit if limit is not None else _MAX_RECORDS,
+            with_payload=True,
+            # The caller wants the text and its details, never the numbers.
+            with_vectors=False,
+        )
+
+        return [
+            Chunk(
+                id=str(point.id),
+                text=str(point.payload.get(_TEXT_KEY, "")),
+                metadata=point.payload.get(_METADATA_KEY, {}),
+            )
+            for point in found
+            if point.payload is not None
+        ]
+
     async def search(
         self,
         collection: str,
@@ -129,6 +183,12 @@ class QdrantStore:
         return result.status == models.UpdateStatus.COMPLETED
 
     # ---------------------------------------------------------------------- internals
+
+    async def _placeholder_vector(self, collection: str) -> list[float]:
+        """A vector of the size this collection was built for, pointing one way."""
+        info = await self._client.get_collection(collection_name=collection)
+        size = info.config.params.vectors.size
+        return [1.0] + [0.0] * (size - 1)
 
     async def _require(self, collection: str) -> None:
         """Refuse to work on a collection that was never created."""

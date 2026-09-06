@@ -9,7 +9,13 @@ pydantic-settings
 
 # LangChain
 langchain-core
+langchain-community
 langchain-openai
+langchain-text-splitters
+
+# Documents
+pypdf
+tiktoken
 
 # Providers
 openai

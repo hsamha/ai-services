@@ -7,7 +7,7 @@ from src.core.types import Chunk, Metadata, SearchHit
 class VectorStore(Protocol):
     """What every vector database implementation must provide."""
 
-    async def create_collection(self, collection: str, recreate: bool = False) -> bool:
+    async def create_collection(self, collection: str, *, recreate: bool = False) -> bool:
         """Create a collection. Returns False if it already existed and was kept."""
         ...
 
@@ -23,8 +23,26 @@ class VectorStore(Protocol):
         """Every collection name currently stored."""
         ...
 
+    async def count(self, collection: str) -> int:
+        """How many records the collection holds."""
+        ...
+
     async def add_chunks(self, collection: str, chunks: list[Chunk]) -> list[str]:
         """Store chunks, embedding them first. Returns the stored ids."""
+        ...
+
+    async def add_records(self, collection: str, chunks: list[Chunk]) -> list[str]:
+        """Store records without embedding them"""
+        ...
+
+    async def get_records(
+        self,
+        collection: str,
+        *,
+        filters: Metadata | None = None,
+        limit: int | None = None,
+    ) -> list[Chunk]:
+        """Read the records whose metadata matches, with no similarity involved"""
         ...
 
     async def search(
@@ -41,10 +59,6 @@ class VectorStore(Protocol):
 
     async def delete_chunks(self, collection: str, ids: list[str]) -> bool:
         """Remove specific chunks by id."""
-        ...
-
-    async def close(self) -> None:
-        """Release the connections."""
         ...
 
 

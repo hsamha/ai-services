@@ -1,7 +1,9 @@
 from enum import StrEnum
 
 
-class SourceType(StrEnum):
+class FileType(StrEnum):
+    """What kind of document a file holds. What decides which loader reads it."""
+
     TEXT = "text"
     MARKDOWN = "markdown"
     HTML = "html"
@@ -14,5 +16,4 @@ class SourceType(StrEnum):
     CSV = "csv"
     JSON = "json"
 
-    # Recognised as a file, but not a kind we can read.
     UNKNOWN = "unknown"

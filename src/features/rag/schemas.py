@@ -1,19 +1,17 @@
-"""The knowledge base contracts.
-
-A document is stored twice. Its full text goes into the documents collection as
-one record, so it can be shown back or split again later. Its pieces go into the
-chunks collection, one point each, and those are what a question is matched
-against.
-
-"""
 
 from datetime import UTC, datetime
 from typing import Self
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from src.core.types import Chunk, Metadata
-from src.features.rag.enums import SourceType
+from src.core.tools.enums import FileType
+
+
+def _new_id() -> str:
+    """A primary key. Random, and a UUID because that is what a store accepts."""
+    return str(uuid4())
 
 
 def _now() -> str:
@@ -23,11 +21,12 @@ def _now() -> str:
 class DocumentMetadata(BaseModel):
     """What is known about a document, beside its text."""
 
+    id: str = Field(default_factory=_new_id)
     document_id: str
     title: str
-    source_type: SourceType = SourceType.TEXT
+    source_type: FileType = FileType.TEXT
     char_count: int
-    # How many chunks it was split into. Zero until the split has happened.
+    token_count: int
     chunk_count: int = 0
     created_at: str = Field(default_factory=_now)
 
@@ -44,7 +43,7 @@ class DocumentMetadata(BaseModel):
 class ChunkMetadata(BaseModel):
     """What is known about one piece of a document."""
 
-    chunk_id: str
+    id: str = Field(default_factory=_new_id)
     document_id: str
     # Position in the document, counting from zero.
     index: int
@@ -67,10 +66,9 @@ class DocumentRecord(BaseModel):
     metadata: DocumentMetadata
 
     def to_chunk(self) -> Chunk:
-        """The point to store. Its id is the document id, so re-ingesting the
-        same document replaces the record instead of duplicating it."""
+        """The point to store, under the record's own primary key."""
         return Chunk(
-            id=self.metadata.document_id,
+            id=self.metadata.id,
             text=self.text,
             metadata=self.metadata.to_metadata(),
         )
@@ -90,7 +88,7 @@ class ChunkRecord(BaseModel):
     def to_chunk(self) -> Chunk:
         """The point to store, under the chunk's own id."""
         return Chunk(
-            id=self.metadata.chunk_id,
+            id=self.metadata.id,
             text=self.text,
             metadata=self.metadata.to_metadata(),
         )
@@ -99,3 +97,49 @@ class ChunkRecord(BaseModel):
     def from_chunk(cls, chunk: Chunk) -> Self:
         """Rebuild a piece from a stored point."""
         return cls(text=chunk.text, metadata=ChunkMetadata.from_metadata(chunk.metadata))
+
+
+# --------------------------------------------------------------------- the API
+
+
+class IngestTextRequest(BaseModel):
+    document_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class IngestResponse(BaseModel):
+    id: str
+    document_id: str
+    title: str
+    source_type: FileType
+    char_count: int
+    token_count: int
+    chunk_count: int
+
+
+class DocumentResponse(BaseModel):
+    metadata: DocumentMetadata
+    text: str | None = None
+    message: str | None = None
+
+
+class ChunkResponse(BaseModel):
+    id: str
+    document_id: str
+    index: int
+    text: str
+
+    @classmethod
+    def from_record(cls, record: "ChunkRecord") -> Self:
+        return cls(
+            id=record.metadata.id,
+            document_id=record.metadata.document_id,
+            index=record.metadata.index,
+            text=record.text,
+        )
+
+
+class ChunksResponse(BaseModel):
+    document_id: str
+    chunks: list[ChunkResponse] = Field(default_factory=list)

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     top_k: int = 5
 
+    max_document_tokens: int = 5000
+
 
 @lru_cache
 def get_settings() -> Settings:

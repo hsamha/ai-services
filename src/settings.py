@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.core.vectorstores.enums import ChromaMode, VectorStoreProvider
+from src.core.vectorstores.enums import VectorStoreProvider
 
 
 class Settings(BaseSettings):
@@ -15,11 +15,6 @@ class Settings(BaseSettings):
     vector_store: VectorStoreProvider = VectorStoreProvider.QDRANT
 
     qdrant_url: str = "http://localhost:6333"
-
-    chroma_mode: ChromaMode = ChromaMode.MEMORY
-    chroma_path: str = "./chroma_storage"
-    chroma_host: str = "localhost"
-    chroma_port: int = 8000
 
     chunk_size: int = 300
     chunk_overlap: int = 50

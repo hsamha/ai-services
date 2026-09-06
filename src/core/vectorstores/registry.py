@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from src.context import get_context
 from src.core.embeddings.factory import get_embedding_model
-from src.core.vectorstores import chroma, qdrant
+from src.core.vectorstores import qdrant
 from src.core.vectorstores.base import VectorStore, VectorStoreBackend
 from src.core.vectorstores.enums import VectorStoreProvider
 from src.settings import get_settings
@@ -10,7 +10,6 @@ from src.settings import get_settings
 
 _BACKENDS: dict[VectorStoreProvider, VectorStoreBackend] = {
     VectorStoreProvider.QDRANT: qdrant,
-    VectorStoreProvider.CHROMA: chroma,
 }
 
 

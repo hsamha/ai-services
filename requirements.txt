@@ -19,7 +19,6 @@ tiktoken
 
 # Providers
 openai
-chromadb
 qdrant-client
 
 # Async I/O

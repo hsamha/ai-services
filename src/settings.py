@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     max_document_tokens: int = 5000
 
+    max_history_messages: int = 5
+
+    max_agent_steps: int = 6
+
 
 @lru_cache
 def get_settings() -> Settings:

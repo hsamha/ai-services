@@ -8,6 +8,7 @@ pydantic
 pydantic-settings
 
 # LangChain
+langchain
 langchain-core
 langchain-community
 langchain-openai

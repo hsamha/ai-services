@@ -1,9 +1,12 @@
 from fastapi import HTTPException, status
 
+from src.core.llm.factory import get_text_llm_name
 from src.core.types import Chunk, Metadata, SearchHit
 from src.core.vectorstores.registry import get_store
 from src.features.rag.constants import CHUNKS_COLLECTION, DOCUMENTS_COLLECTION
 from src.features.rag.schemas import (
+    AskRequest,
+    AskResponse,
     ChunkRecord,
     ChunkResponse,
     ChunksResponse,
@@ -99,3 +102,14 @@ async def _chunks_of(document_id: str) -> list[ChunkRecord]:
     # A store returns points in whatever order suits it, so ordering is ours.
     return sorted(records, key=lambda record: record.metadata.index)
 
+
+
+async def ask(body: AskRequest) -> AskResponse:
+    """Put a question to the agent"""
+    from src.features.rag import agent
+
+    return AskResponse(
+        question=body.question,
+        answer=await agent.answer(body.question, body.history),
+        model=get_text_llm_name(),
+    )

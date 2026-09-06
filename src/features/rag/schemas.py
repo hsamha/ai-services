@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.core.types import Chunk, Metadata, SearchHit
 from src.core.tools.enums import FileType
+from src.features.rag.constants import ChatRole
 
 
 def _new_id() -> str:
@@ -162,3 +163,22 @@ class SearchResponse(BaseModel):
 
     query: str
     hits: list[SearchHit] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------------- the agent
+
+
+class HistoryMessage(BaseModel):
+    role: ChatRole
+    content: str = Field(min_length=1)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1)
+    history: list[HistoryMessage] = Field(default_factory=list)
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    model: str

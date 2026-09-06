@@ -1,3 +1,4 @@
+from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from src.core.llm.base import LLM
@@ -15,6 +16,10 @@ class OpenAILLM:
         if isinstance(content, str):
             return content
         return "".join(part for part in content if isinstance(part, str))
+
+    def chat_model(self) -> BaseChatModel:
+        """The client itself. An agent binds its tools to this."""
+        return self._chat
 
 
 def build(api_key: str, model: str) -> LLM:

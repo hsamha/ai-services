@@ -5,6 +5,8 @@ from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from src.features.rag import ingest, service
 from src.core.tools.enums import FileType
 from src.features.rag.schemas import (
+    AskRequest,
+    AskResponse,
     ChunksResponse,
     DocumentResponse,
     IngestResponse,
@@ -62,3 +64,8 @@ async def expand_chunk(
 async def search(body: SearchRequest) -> SearchResponse:
     """The chunks closest to the query, optionally narrowed to one document."""
     return await service.search(body)
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(body: AskRequest) -> AskResponse:
+    return await service.ask(body)

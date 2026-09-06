@@ -8,11 +8,7 @@ from fastapi import Header, Security
 from fastapi.security import APIKeyHeader
 
 from src.middleware.auth import SERVICE_KEY_HEADER
-from src.middleware.context import (
-    EMBEDDING_MODEL_HEADER,
-    LLM_MODEL_HEADER,
-    PROVIDER_KEY_HEADER,
-)
+from src.middleware.context import LLM_MODEL_HEADER, PROVIDER_KEY_HEADER
 
 # Each needs its own scheme_name, or they collapse into a single Authorize box.
 service_key_scheme = APIKeyHeader(
@@ -38,13 +34,6 @@ async def request_headers(
         Header(
             alias=LLM_MODEL_HEADER,
             description="Chat model, e.g. gpt-4o-mini. Empty for the configured default.",
-        ),
-    ] = None,
-    embedding_model: Annotated[
-        str | None,
-        Header(
-            alias=EMBEDDING_MODEL_HEADER,
-            description="Embedding model, e.g. text-embedding-3-small. Empty for the default.",
         ),
     ] = None,
 ) -> None:

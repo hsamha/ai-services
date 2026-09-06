@@ -16,12 +16,12 @@ _BUILDERS: dict[EmbeddingProvider, Callable[[str, str], Embedder]] = {
 }
 
 
-def current_model() -> str:
-    return get_context().embedding_model or get_settings().embedding_model
+def get_embedding_model_name() -> str:
+    return get_settings().embedding_model
 
 
-def get_embedder() -> Embedder:
-    return _build(get_context().provider_key, current_model())
+def get_embedding_model() -> Embedder:
+    return _build(get_context().provider_key, get_embedding_model_name())
 
 
 @lru_cache(maxsize=32)

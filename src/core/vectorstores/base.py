@@ -57,6 +57,10 @@ class VectorStoreBackend(Protocol):
         """Close it again. Called once, when the service stops."""
         ...
 
+    async def ensure_collection(self, name: str, dimensions: int) -> bool:
+        """Create a collection if it is not there"""
+        ...
+
     def build(self, embedder: Embedder) -> VectorStore:
         """A store on the open connection, embedding with the caller's model."""
         ...

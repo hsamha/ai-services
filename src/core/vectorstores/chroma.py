@@ -194,3 +194,22 @@ def build(embedder: Embedder) -> ChromaStore:
             detail="Not connected to Chroma.",
         )
     return ChromaStore(client=_client, embedder=embedder)
+
+
+async def ensure_collection(name: str, dimensions: int) -> bool:
+    """Create a collection if it is not there. Returns whether this call made it.
+
+    `dimensions` is taken to match the other backends and ignored: Chroma sizes
+    a collection from the first vectors written to it.
+    """
+    if _client is None:
+        raise RuntimeError("Not connected to Chroma.")
+
+    found = await to_thread.run_sync(_client.list_collections)
+    if name in [str(existing) for existing in found]:
+        return False
+
+    await to_thread.run_sync(
+        partial(_client.create_collection, name=name, embedding_function=None)
+    )
+    return True

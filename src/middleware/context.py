@@ -1,9 +1,9 @@
 """Building the request context.
 
 Reads the values a caller sends with each request -- their key and, optionally,
-which models and store to use -- and puts them where the rest of the code can
-reach them. A caller names a model; which provider serves it is decided deeper
-in. Anything they leave out falls back to the configured default.
+which chat model to use -- and puts them where the rest of the code can reach
+them. A caller names a model; which provider serves it is decided deeper in.
+Anything they leave out falls back to the configured default.
 
 Runs after authentication, so only accepted callers get this far.
 """
@@ -17,7 +17,6 @@ from src.middleware.auth import SERVICE_KEY_HEADER, is_open
 
 PROVIDER_KEY_HEADER = "X-AI-Provider-Key"
 LLM_MODEL_HEADER = "X-LLM-Model"
-EMBEDDING_MODEL_HEADER = "X-Embedding-Model"
 
 
 class ContextMiddleware(BaseHTTPMiddleware):
@@ -40,7 +39,6 @@ class ContextMiddleware(BaseHTTPMiddleware):
             api_key=request.headers.get(SERVICE_KEY_HEADER, ""),
             provider_key=provider_key,
             llm_model=request.headers.get(LLM_MODEL_HEADER),
-            embedding_model=request.headers.get(EMBEDDING_MODEL_HEADER),
         )
 
         token = set_context(context)

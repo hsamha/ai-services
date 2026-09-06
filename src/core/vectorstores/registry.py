@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from src.context import get_context
-from src.core.embeddings.factory import get_embedder
+from src.core.embeddings.factory import get_embedding_model
 from src.core.vectorstores import chroma, qdrant
 from src.core.vectorstores.base import VectorStore, VectorStoreBackend
 from src.core.vectorstores.enums import VectorStoreProvider
@@ -35,17 +35,17 @@ async def close_connections() -> None:
     _store_for_caller.cache_clear()
 
 
+async def ensure_collection(name: str, dimensions: int) -> bool:
+    return await _backend().ensure_collection(name, dimensions)
+
+
 def get_store() -> VectorStore:
     """The store for the request being handled."""
     context = get_context()
-    return _store_for_caller(context.provider_key, context.embedding_model)
+    return _store_for_caller(context.provider_key)
 
 
 @lru_cache(maxsize=32)
-def _store_for_caller(api_key: str, embedding_model: str | None) -> VectorStore:
-    """One store per caller and model, so its collection lookups stay warm.
-
-    The arguments are only the cache key -- what the caller sent, before any
-    default is applied. Resolving that default belongs to the embedding factory.
-    """
-    return _backend().build(get_embedder())
+def _store_for_caller(api_key: str) -> VectorStore:
+    """One store per caller, so its collection lookups stay warm."""
+    return _backend().build(get_embedding_model())

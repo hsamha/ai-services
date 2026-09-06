@@ -185,3 +185,23 @@ def build(embedder: Embedder) -> QdrantStore:
             detail="Not connected to Qdrant.",
         )
     return QdrantStore(client=_client, embedder=embedder)
+
+
+async def ensure_collection(name: str, dimensions: int) -> bool:
+    """Create a collection if it is not there. Returns whether this call made it.
+
+    For the collections the service creates at startup. No caller has arrived
+    yet, so there is no key to embed a probe string with -- the vector size is
+    given rather than measured. An existing collection is left as it is.
+    """
+    if _client is None:
+        raise RuntimeError("Not connected to Qdrant.")
+
+    if await _client.collection_exists(name):
+        return False
+
+    await _client.create_collection(
+        collection_name=name,
+        vectors_config=models.VectorParams(size=dimensions, distance=models.Distance.COSINE),
+    )
+    return True

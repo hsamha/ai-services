@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from src.api import api_router
 from src.core.vectorstores.registry import close_connections, open_connections
+from src.features.rag.collections import seed_collections
 from src.middleware.auth import AuthMiddleware
 from src.middleware.context import ContextMiddleware
 from src.middleware.errors import ErrorMiddleware
@@ -25,6 +26,7 @@ class HealthResponse(BaseModel):
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Hold the database connections open for as long as the service runs."""
     await open_connections()
+    await seed_collections()
     try:
         yield
     finally:

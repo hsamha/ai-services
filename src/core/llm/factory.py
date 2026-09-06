@@ -15,12 +15,12 @@ _BUILDERS: dict[LLMProvider, Callable[[str, str], LLM]] = {
 }
 
 
-def current_model() -> str:
+def get_text_llm_name() -> str:
     return get_context().llm_model or get_settings().llm_model
 
 
-def get_llm() -> LLM:
-    return _build(get_context().provider_key, current_model())
+def get_text_llm() -> LLM:
+    return _build(get_context().provider_key, get_text_llm_name())
 
 
 @lru_cache(maxsize=32)

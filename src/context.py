@@ -1,7 +1,7 @@
 """What the current request carries.
 
-Who is calling, whose model usage the request pays for, and which models and
-store they asked for. The context middleware fills this in as each request arrives; anything
+Who is calling, whose model usage the request pays for, and which chat model
+they asked for The context middleware fills this in as each request arrives; anything
 deeper -- a factory, a service, a handler -- reads it from here, so a key 
 is read in one place and never travels through the rest of the code.
 """
@@ -15,14 +15,12 @@ class RequestContext:
     api_key: str = field(repr=False)
     provider_key: str = field(repr=False)
     llm_model: str | None
-    embedding_model: str | None
 
     def __repr__(self) -> str:
         """Describe the context without ever printing either key."""
         return (
             f"RequestContext(api_key='***', provider_key='***', "
-            f"llm_model={self.llm_model!r}, "
-            f"embedding_model={self.embedding_model!r})"
+            f"llm_model={self.llm_model!r})"
         )
 
 

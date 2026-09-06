@@ -1,6 +1,6 @@
 from fastapi import HTTPException, status
 
-from src.core.types import Chunk
+from src.core.types import Chunk, Metadata, SearchHit
 from src.core.vectorstores.registry import get_store
 from src.features.rag.constants import CHUNKS_COLLECTION, DOCUMENTS_COLLECTION
 from src.features.rag.schemas import (
@@ -9,33 +9,30 @@ from src.features.rag.schemas import (
     ChunksResponse,
     DocumentRecord,
     DocumentResponse,
+    SearchRequest,
+    SearchResponse,
 )
 from src.settings import get_settings
 
-TOO_LARGE = "Document too large - try to decompose question and use knowledge tool"
+TOO_LARGE_MSG = "Document too large - try to decompose question and use knowledge tool"
 
 
 async def get_document(document_id: str) -> DocumentResponse:
     document = await _document(document_id)
 
     if document.metadata.token_count > get_settings().max_document_tokens:
-        return DocumentResponse(metadata=document.metadata, message=TOO_LARGE)
+        return DocumentResponse(metadata=document.metadata, message=TOO_LARGE_MSG)
 
     return DocumentResponse(metadata=document.metadata, text=document.text)
 
 
-async def get_document_chunks(
-    document_id: str,
-    limit: int | None = None,
-    offset: int = 0,
-) -> ChunksResponse:
+async def get_document_chunks(document_id: str) -> ChunksResponse:
     await _document(document_id)
     records = await _chunks_of(document_id)
-    wanted = records[offset : offset + limit] if limit is not None else records[offset:]
 
     return ChunksResponse(
         document_id=document_id,
-        chunks=[ChunkResponse.from_record(record) for record in wanted],
+        chunks=[ChunkResponse.from_record(record) for record in records],
     )
 
 
@@ -51,6 +48,20 @@ async def expand_chunk(chunk_id: str, window: int = 1) -> ChunksResponse:
         document_id=chunk.metadata.document_id,
         chunks=[ChunkResponse.from_record(record) for record in neighbours],
     )
+
+
+async def search(body: SearchRequest) -> SearchResponse:
+    """The chunks closest to the query, closest first."""
+    filters: Metadata | None = {"document_id": body.document_id} if body.document_id else None
+    hits: list[SearchHit] = await get_store().search(
+        CHUNKS_COLLECTION,
+        body.query,
+        limit=get_settings().top_k,
+        filters=filters,
+        score_threshold=body.score_threshold,
+    )
+
+    return SearchResponse(query=body.query, hits=hits)
 
 
 async def _document(document_id: str) -> DocumentRecord:
@@ -87,3 +98,4 @@ async def _chunks_of(document_id: str) -> list[ChunkRecord]:
     records = [ChunkRecord.from_chunk(point) for point in found]
     # A store returns points in whatever order suits it, so ordering is ours.
     return sorted(records, key=lambda record: record.metadata.index)
+

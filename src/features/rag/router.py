@@ -9,6 +9,8 @@ from src.features.rag.schemas import (
     DocumentResponse,
     IngestResponse,
     IngestTextRequest,
+    SearchRequest,
+    SearchResponse,
 )
 
 router = APIRouter(prefix="/rag", tags=["rag"])
@@ -42,13 +44,9 @@ async def get_document(document_id: str) -> DocumentResponse:
 
 
 @router.get("/documents/{document_id}/chunks", response_model=ChunksResponse)
-async def get_document_chunks(
-    document_id: str,
-    limit: Annotated[int | None, Query(ge=1)] = None,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> ChunksResponse:
+async def get_document_chunks(document_id: str) -> ChunksResponse:
     """Every piece of the document, in the order it was split."""
-    return await service.get_document_chunks(document_id, limit, offset)
+    return await service.get_document_chunks(document_id)
 
 
 @router.get("/chunks/{chunk_id}/expand", response_model=ChunksResponse)
@@ -58,3 +56,9 @@ async def expand_chunk(
 ) -> ChunksResponse:
     """The chunk, with the ones either side of it for context."""
     return await service.expand_chunk(chunk_id, window)
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search(body: SearchRequest) -> SearchResponse:
+    """The chunks closest to the query, optionally narrowed to one document."""
+    return await service.search(body)

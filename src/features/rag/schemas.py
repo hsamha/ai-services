@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from src.core.types import Chunk, Metadata
+from src.core.types import Chunk, Metadata, SearchHit
 from src.core.tools.enums import FileType
 
 
@@ -143,3 +143,22 @@ class ChunkResponse(BaseModel):
 class ChunksResponse(BaseModel):
     document_id: str
     chunks: list[ChunkResponse] = Field(default_factory=list)
+
+
+class SearchRequest(BaseModel):
+    """A question, optionally narrowed to one document."""
+
+    query: str = Field(min_length=1)
+    document_id: str | None = None
+    score_threshold: float | None = None
+
+
+class SearchResponse(BaseModel):
+    """The chunks the query matched, closest first.
+
+    Hits carry the store's own `SearchHit`; a chunk's id, document and index
+    are in its metadata, as `ChunkMetadata` wrote them.
+    """
+
+    query: str
+    hits: list[SearchHit] = Field(default_factory=list)

@@ -12,4 +12,8 @@ PROVIDER_BY_MODEL: dict[str, LLMProvider] = {
     "openai/gpt-oss-20b": LLMProvider.GROQ,
     "llama-3.3-70b-versatile": LLMProvider.GROQ,
     "llama-3.1-8b-instant": LLMProvider.GROQ,
+    "gemini-2.5-pro": LLMProvider.GEMINI,
+    "gemini-2.5-flash": LLMProvider.GEMINI,
+    "gemini-2.5-flash-lite": LLMProvider.GEMINI,
+    "gemini-2.0-flash": LLMProvider.GEMINI,
 }

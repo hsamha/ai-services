@@ -1,8 +1,9 @@
+import logging
 from functools import lru_cache
 
 from fastapi import HTTPException, status
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 
@@ -13,6 +14,9 @@ from src.features.rag.prompts import SYSTEM_PROMPT
 from src.features.rag.schemas import HistoryMessage
 from src.features.rag.tools import RAG_TOOLS
 from src.settings import get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_agent() -> CompiledStateGraph:
@@ -50,6 +54,8 @@ async def answer(question: str, history: list[HistoryMessage]) -> str:
             detail="The question took too many retrieval steps to settle. Try a narrower one.",
         ) from error
 
+    _log_tool_calls(result["messages"])
+
     return _text(result["messages"][-1])
 
 
@@ -85,3 +91,19 @@ def _text(message: BaseMessage) -> str:
             parts.append(str(part.get("text", "")))
 
     return "".join(parts)
+
+
+def _log_tool_calls(messages: list[BaseMessage]) -> None:
+    """Write down which tools the agent reached for, and what each gave back.
+
+    A call and its result are two separate messages, so both are logged as they
+    are met -- in the order the agent worked -- rather than paired up.
+    """
+    for message in messages:
+        if isinstance(message, AIMessage):
+            for call in message.tool_calls:
+                logger.info("Agent calling %s(%s).", call["name"], call["args"])
+        elif isinstance(message, ToolMessage):
+            logger.info(
+                "Tool %s returned %d characters.", message.name, len(_text(message))
+            )

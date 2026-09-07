@@ -3,7 +3,6 @@ from functools import lru_cache
 
 from fastapi import HTTPException, status
 
-from src.context import get_context
 from src.core.embeddings import openai
 from src.core.embeddings.base import Embedder
 from src.core.embeddings.constants import PROVIDER_BY_MODEL
@@ -21,7 +20,14 @@ def get_embedding_model_name() -> str:
 
 
 def get_embedding_model() -> Embedder:
-    return _build(get_context().provider_key, get_embedding_model_name())
+    settings = get_settings()
+    if not settings.embedding_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No EMBEDDING_API_KEY configured.",
+        )
+
+    return _build(settings.embedding_api_key, settings.embedding_model)
 
 
 @lru_cache(maxsize=32)

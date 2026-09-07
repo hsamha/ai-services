@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from src.context import get_context
 from src.core.embeddings.factory import get_embedding_model
 from src.core.vectorstores import qdrant
 from src.core.vectorstores.base import VectorStore, VectorStoreBackend
@@ -31,20 +30,13 @@ async def open_connections() -> None:
 async def close_connections() -> None:
     """Disconnect. Called once, when the service stops."""
     await _backend().disconnect()
-    _store_for_caller.cache_clear()
+    get_store.cache_clear()
 
 
 async def ensure_collection(name: str, dimensions: int) -> bool:
     return await _backend().ensure_collection(name, dimensions)
 
 
+@lru_cache(maxsize=1)
 def get_store() -> VectorStore:
-    """The store for the request being handled."""
-    context = get_context()
-    return _store_for_caller(context.provider_key)
-
-
-@lru_cache(maxsize=32)
-def _store_for_caller(api_key: str) -> VectorStore:
-    """One store per caller, so its collection lookups stay warm."""
     return _backend().build(get_embedding_model())

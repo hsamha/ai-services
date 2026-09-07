@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
+
+    embedding_api_key: str = ""
     vector_store: VectorStoreProvider = VectorStoreProvider.QDRANT
 
     qdrant_url: str = "http://localhost:6333"

@@ -18,6 +18,8 @@ from src.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+_RULE = "─" * 8
+
 
 def get_agent() -> CompiledStateGraph:
     """The agent for the request being handled."""
@@ -99,11 +101,15 @@ def _log_tool_calls(messages: list[BaseMessage]) -> None:
     A call and its result are two separate messages, so both are logged as they
     are met -- in the order the agent worked -- rather than paired up.
     """
+    logger.info("%s TOOL CALLS %s", _RULE, _RULE)
+
     for message in messages:
         if isinstance(message, AIMessage):
             for call in message.tool_calls:
-                logger.info("Agent calling %s(%s).", call["name"], call["args"])
+                logger.info("  ->  %s(%s)", call["name"], call["args"])
         elif isinstance(message, ToolMessage):
             logger.info(
-                "Tool %s returned %d characters.", message.name, len(_text(message))
+                "  <-  %s returned %d characters", message.name, len(_text(message))
             )
+
+    logger.info("%s", _RULE * 3)

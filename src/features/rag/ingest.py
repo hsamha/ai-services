@@ -14,6 +14,7 @@ from src.features.rag.schemas import (
     DocumentRecord,
     IngestResponse,
 )
+from src.settings import get_settings
 
 
 async def ingest_text(document_id: str, title: str, text: str) -> IngestResponse:
@@ -42,7 +43,8 @@ async def _store(
     # An ingest works even if the seeding at startup could not reach the store.
     await ensure_collections()
 
-    pieces = await splitter.split(text)
+    token_count = await tokens.count_tokens(text)
+    pieces = await _pieces(text, token_count)
     document = DocumentRecord(
         text=text,
         metadata=DocumentMetadata(
@@ -50,7 +52,7 @@ async def _store(
             title=title,
             source_type=source_type,
             char_count=len(text),
-            token_count=await tokens.count_tokens(text),
+            token_count=token_count,
             chunk_count=len(pieces),
         ),
     )
@@ -90,3 +92,12 @@ async def _remove(document_id: str) -> None:
         ids = [point.id for point in found if point.id is not None]
         if ids:
             await store.delete_chunks(collection, ids)
+
+
+async def _pieces(text: str, token_count: int) -> list[str]:
+    """Split the text, unless it is small enough to stand as a single chunk."""
+    if not text.strip():
+        return []
+    if token_count <= get_settings().single_chunk_max_tokens:
+        return [text]
+    return await splitter.split(text)

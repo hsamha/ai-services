@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     chunk_size: int = 300
     chunk_overlap: int = 50
 
+    # A document at or under this size is kept whole instead of being split.
+    single_chunk_max_tokens: int = 1000
+
     top_k: int = 5
 
     max_document_tokens: int = 5000

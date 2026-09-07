@@ -24,8 +24,14 @@ def _signature(raw: bytes) -> str:
     return sha256(raw).hexdigest()
 
 
+def _reject_empty(detail: str) -> None:
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
 async def ingest_text(document_id: str, title: str, text: str) -> IngestResponse:
     """Store text sent inline."""
+    if not text.strip():
+        _reject_empty("The text is empty.")
     return await _store(document_id, title, text, FileType.TEXT, _signature(text.encode()))
 
 
@@ -37,7 +43,14 @@ async def ingest_file(
 ) -> IngestResponse:
     """Store an uploaded file, reading its text with the loader for its kind."""
     raw = await upload.read()
+    if not raw:
+        _reject_empty("The uploaded file is empty.")
+
     text = await get_loader(source_type).load(raw)
+    # A file can carry bytes and still hold no readable text — a scanned PDF, say.
+    if not text.strip():
+        _reject_empty("No text could be read from the uploaded file.")
+
     return await _store(
         document_id,
         title or upload.filename or document_id,

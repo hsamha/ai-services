@@ -168,6 +168,35 @@ class SearchResponse(BaseModel):
     hits: list[SearchHit] = Field(default_factory=list)
 
 
+# -------------------------------------------------------------- what tools answer
+
+
+class CurrentDateTime(BaseModel):
+    """The clock, as the datetime tool reports it."""
+
+    iso: str
+    timezone: str
+    # Spelled out, so a model does not have to parse the ISO string to read it.
+    readable: str
+    weekday: str
+    utc_offset: str
+
+
+class Translation(BaseModel):
+    """One piece of text, put into another language."""
+
+    text: str
+    target_language: str
+    source_language: str | None = None
+
+
+class WebSearchResult(BaseModel):
+    """What the web was asked, and what came back."""
+
+    query: str
+    answer: str
+
+
 # ------------------------------------------------------------------- the agent
 
 

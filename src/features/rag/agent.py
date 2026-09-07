@@ -12,13 +12,13 @@ from src.core.llm.factory import get_text_llm, get_text_llm_name
 from src.features.rag.constants import ChatRole
 from src.features.rag.prompts import SYSTEM_PROMPT
 from src.features.rag.schemas import HistoryMessage
-from src.features.rag.tools import RAG_TOOLS
+from src.features.rag.tools import get_tools
 from src.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
 
-_RULE = "─" * 8
+_RULE = "─" * 22
 
 
 def get_agent() -> CompiledStateGraph:
@@ -34,10 +34,13 @@ def _build(api_key: str, model: str) -> CompiledStateGraph:
     same context `get_agent` took these from. They are here to be the cache key
     -- an agent holds the key and model it was built with, so without them every
     caller after the first would be handed an agent spending someone else's key.
+
+    The model is part of the key for a second reason: which tools an agent is
+    given depends on it, since a hosted tool only runs on its own provider.
     """
     return create_agent(
         model=get_text_llm().chat_model(),
-        tools=RAG_TOOLS,
+        tools=get_tools(),
         system_prompt=SYSTEM_PROMPT,
         name="rag_agent",
     )

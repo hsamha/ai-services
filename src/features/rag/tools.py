@@ -1,28 +1,24 @@
-"""The knowledge base, as tools a model can call.
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-Each tool is a thin wrapper over `service`: the service holds the retrieval
-logic, and the docstring here is what the model reads to decide when to reach
-for it. Every one is async, so the agent calls them without blocking the loop
-while a store is being read.
-
-They are bound with `@tool(parse_docstring=True)`, which turns the `Args:`
-block into the argument schema the model is shown -- so the wording of a
-docstring is part of the contract, not a comment.
-
-A tool answers in JSON. The typed response models stay the service's business;
-what crosses into the conversation is text, because that is what a model reads
-and what a tool message can carry unchanged.
-
-A tool reads the store through `get_store()`, which resolves the caller from
-the request context. So a tool call only works inside a request, exactly like
-the handlers do.
-"""
-
+from fastapi import HTTPException, status
 from langchain_core.tools import BaseTool, tool
+from openai import AsyncOpenAI, OpenAIError
 from pydantic import BaseModel
 
+from src.context import get_context
+from src.core.llm.constants import PROVIDER_BY_MODEL
+from src.core.llm.enums import LLMProvider
+from src.core.llm.factory import get_text_llm, get_text_llm_name
 from src.features.rag import service
-from src.features.rag.schemas import SearchRequest
+from src.features.rag.prompts import TRANSLATE_PROMPT
+from src.features.rag.schemas import (
+    CurrentDateTime,
+    SearchRequest,
+    Translation,
+    WebSearchResult,
+)
+from src.settings import get_settings
 
 
 def _as_json(payload: BaseModel) -> str:
@@ -108,11 +104,116 @@ async def expand_chunk(chunk_id: str, window: int = 1) -> str:
     return _as_json(await service.expand_chunk(chunk_id, window))
 
 
-# What the agent is given. Search comes first: it is the tool that finds the ids
-# every other one takes.
-RAG_TOOLS: list[BaseTool] = [
-    search_knowledge_base,
-    read_document,
-    list_document_chunks,
-    expand_chunk,
-]
+@tool(parse_docstring=True)
+async def current_datetime() -> str:
+    """The date and time right now.
+
+    Use this whenever a question turns on when "now" is -- how old something
+    is, whether a date has passed, what "last year" or "next month" refers to.
+    You have no clock of your own, so never work a date out from memory.
+    """
+    settings = get_settings()
+    name = settings.timezone
+
+    try:
+        zone = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown timezone {name!r}. Use an IANA name, such as 'Asia/Amman'.",
+        ) from error
+
+    now = datetime.now(zone)
+
+    return _as_json(
+        CurrentDateTime(
+            iso=now.isoformat(),
+            timezone=name,
+            readable=now.strftime("%d %B %Y, %H:%M"),
+            weekday=now.strftime("%A"),
+            utc_offset=now.strftime("%z"),
+        )
+    )
+
+
+@tool(parse_docstring=True)
+async def translate(text: str, target_language: str, source_language: str | None = None) -> str:
+    """Put text into another language.
+
+    Use this to translate a passage a search returned, or to read a question
+    asked in one language against documents written in another. Translating a
+    question before searching often finds passages the original misses.
+
+    Args:
+        text: The text to translate, as it stands. Pass the whole passage
+            rather than a summary of it.
+        target_language: The language to translate into, named in plain words,
+            such as "English" or "Arabic".
+        source_language: The language the text is in, if you know it. Leave it
+            out to let the model work it out.
+    """
+    translated = await get_text_llm().ask(
+        TRANSLATE_PROMPT.format(target_language=target_language, text=text)
+    )
+
+    return _as_json(
+        Translation(
+            text=translated.strip(),
+            target_language=target_language,
+            source_language=source_language,
+        )
+    )
+
+
+@tool(parse_docstring=True)
+async def openai_web_search(query: str) -> str:
+    """Search the public web for something the knowledge base does not hold.
+
+    Use this only once the knowledge base has come up short, and say in your
+    answer which parts came from the web rather than from the documents. It
+    reaches the open internet, so it knows nothing about the private documents
+    and must never be used to look for them.
+
+    Args:
+        query: What to look up, in full and in plain words.
+    """
+    client = AsyncOpenAI(api_key=get_context().provider_key)
+
+    try:
+        response = await client.responses.create(
+            model=get_text_llm_name(),
+            tools=[{"type": "web_search"}],
+            input=query,
+        )
+    except OpenAIError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"The web search failed: {error}",
+        ) from error
+
+    return _as_json(WebSearchResult(query=query, answer=response.output_text.strip()))
+
+
+def _serves_openai(model: str) -> bool:
+    """Whether this model is one OpenAI serves, and so can run a hosted tool."""
+    return PROVIDER_BY_MODEL.get(model) is LLMProvider.OPENAI
+
+
+def get_tools() -> list[BaseTool]:
+
+    settings = get_settings()
+
+    wanted: list[tuple[bool, BaseTool]] = [
+        (settings.tool_search_knowledge_base, search_knowledge_base),
+        (settings.tool_read_document, read_document),
+        (settings.tool_list_document_chunks, list_document_chunks),
+        (settings.tool_expand_chunk, expand_chunk),
+        (settings.tool_current_datetime, current_datetime),
+        (settings.tool_translate, translate),
+        (
+            settings.tool_openai_web_search and _serves_openai(get_text_llm_name()),
+            openai_web_search,
+        ),
+    ]
+
+    return [tool_ for enabled, tool_ in wanted if enabled]

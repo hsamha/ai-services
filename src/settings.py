@@ -32,6 +32,17 @@ class Settings(BaseSettings):
 
     max_agent_steps: int = 6
 
+    timezone: str = "Asia/Amman"
+
+
+    tool_search_knowledge_base: bool = True
+    tool_read_document: bool = True
+    tool_list_document_chunks: bool = True
+    tool_expand_chunk: bool = True
+    tool_current_datetime: bool = True
+    tool_translate: bool = True
+    tool_openai_web_search: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,0 +1,46 @@
+# The apps on their own. The service is expected to be running already, wherever
+# `API_BASE_URL` points -- by default the host, so this works next to the
+# service's own compose file without the two sharing anything.
+#
+#   docker compose -f ui/docker-compose.yml up -d --build
+
+services:
+  upload:
+    build: .
+    command: >
+      streamlit run ui/upload_app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+    volumes:
+      # So an edit reruns without a rebuild.
+      - .:/app/ui
+    ports:
+      - "8501:8501"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:8000}
+    extra_hosts:
+      # Lets the container reach a service running on the machine itself.
+      - "host.docker.internal:host-gateway"
+
+  chat:
+    build: .
+    command: >
+      streamlit run ui/chat_app.py
+      --server.port 8502
+      --server.address 0.0.0.0
+      --server.headless true
+    volumes:
+      - .:/app/ui
+    ports:
+      - "8502:8502"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

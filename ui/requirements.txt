@@ -1,0 +1,9 @@
+# The Streamlit apps stand on their own -- everything they need is here.
+streamlit
+
+# Config
+pydantic
+pydantic-settings
+
+# Async I/O
+httpx

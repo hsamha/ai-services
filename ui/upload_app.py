@@ -15,6 +15,9 @@ st.set_page_config(page_title="Knowledge uploads", page_icon="📄", layout="wid
 
 INGESTED_KEY = "ingested_documents"
 
+# What the service answers when the same content is already in the store.
+ALREADY_STORED = 409
+
 
 def ingested() -> list[IngestResponse]:
     """What this session has put in, newest first."""
@@ -80,7 +83,11 @@ def upload_files_tab(client: RAGClient) -> None:
                 client.upload_document(document_id, source_type, payload, title=upload.name)
             )
         except APIError as error:
-            st.error(f"{upload.name}: {error.detail}")
+            # A refused duplicate is the expected answer, not a failure.
+            if error.status_code == ALREADY_STORED:
+                st.warning(f"{upload.name}: {error.detail}")
+            else:
+                st.error(f"{upload.name}: {error.detail}")
         else:
             remember(response)
             show_receipt(response)
@@ -101,7 +108,11 @@ def paste_text_tab(client: RAGClient) -> None:
     try:
         response = run(client.ingest_text(document_id, title, text))
     except APIError as error:
-        st.error(error.detail)
+        # A refused duplicate is the expected answer, not a failure.
+        if error.status_code == ALREADY_STORED:
+            st.warning(error.detail)
+        else:
+            st.error(error.detail)
         return
     remember(response)
     show_receipt(response)

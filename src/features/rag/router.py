@@ -17,10 +17,19 @@ from src.features.rag.schemas import (
 
 router = APIRouter(prefix="/rag", tags=["rag"])
 
+# What an ingest answers when the same content is already in the store.
+_ALREADY_STORED = {
+    status.HTTP_409_CONFLICT: {"description": "This content is already stored."}
+}
 
-@router.post("/documents", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/documents",
+    response_model=IngestResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=_ALREADY_STORED,
+)
 async def ingest_text(body: IngestTextRequest) -> IngestResponse:
-    """Store text sent inline, under the caller's own document id."""
     return await ingest.ingest_text(body.document_id, body.title, body.text)
 
 
@@ -28,6 +37,7 @@ async def ingest_text(body: IngestTextRequest) -> IngestResponse:
     "/documents/upload",
     response_model=IngestResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=_ALREADY_STORED,
 )
 async def upload_document(
     document_id: Annotated[str, Form(description="The caller's own id for this document.")],
@@ -35,7 +45,6 @@ async def upload_document(
     file: Annotated[UploadFile, File()],
     title: Annotated[str | None, Form()] = None,
 ) -> IngestResponse:
-    """Store an uploaded file. Its text is read out first."""
     return await ingest.ingest_file(document_id, title, source_type, file)
 
 

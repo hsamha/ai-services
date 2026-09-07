@@ -83,6 +83,7 @@ class DocumentMetadata(BaseModel):
     document_id: str
     title: str
     source_type: FileType = FileType.TEXT
+    content_hash: str = ""
     char_count: int
     token_count: int
     chunk_count: int = 0
@@ -94,6 +95,7 @@ class IngestResponse(BaseModel):
     document_id: str
     title: str
     source_type: FileType
+    content_hash: str = ""
     char_count: int
     token_count: int
     chunk_count: int

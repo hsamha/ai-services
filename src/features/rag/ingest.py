@@ -1,4 +1,6 @@
-from fastapi import UploadFile
+from hashlib import sha256
+
+from fastapi import HTTPException, UploadFile, status
 
 from src.core.tools import splitter, tokens
 from src.core.tools.enums import FileType
@@ -17,9 +19,14 @@ from src.features.rag.schemas import (
 from src.settings import get_settings
 
 
+def _signature(raw: bytes) -> str:
+    """The fingerprint of what was sent, taken over the bytes themselves."""
+    return sha256(raw).hexdigest()
+
+
 async def ingest_text(document_id: str, title: str, text: str) -> IngestResponse:
     """Store text sent inline."""
-    return await _store(document_id, title, text, FileType.TEXT)
+    return await _store(document_id, title, text, FileType.TEXT, _signature(text.encode()))
 
 
 async def ingest_file(
@@ -29,8 +36,15 @@ async def ingest_file(
     upload: UploadFile,
 ) -> IngestResponse:
     """Store an uploaded file, reading its text with the loader for its kind."""
-    text = await get_loader(source_type).load(await upload.read())
-    return await _store(document_id, title or upload.filename or document_id, text, source_type)
+    raw = await upload.read()
+    text = await get_loader(source_type).load(raw)
+    return await _store(
+        document_id,
+        title or upload.filename or document_id,
+        text,
+        source_type,
+        _signature(raw),
+    )
 
 
 async def _store(
@@ -38,10 +52,21 @@ async def _store(
     title: str,
     text: str,
     source_type: FileType,
+    content_hash: str,
 ) -> IngestResponse:
     """Split the text and write both collections."""
     # An ingest works even if the seeding at startup could not reach the store.
     await ensure_collections()
+
+    held = await _held_with_hash(content_hash)
+    if held is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"This content is already stored as {held.document_id!r} "
+                f"({held.title!r})."
+            ),
+        )
 
     token_count = await tokens.count_tokens(text)
     pieces = await _pieces(text, token_count)
@@ -51,6 +76,7 @@ async def _store(
             document_id=document_id,
             title=title,
             source_type=source_type,
+            content_hash=content_hash,
             char_count=len(text),
             token_count=token_count,
             chunk_count=len(pieces),
@@ -71,15 +97,31 @@ async def _store(
     if chunks:
         await store.add_chunks(CHUNKS_COLLECTION, [chunk.to_chunk() for chunk in chunks])
 
+    return _response(document.metadata)
+
+
+def _response(metadata: DocumentMetadata) -> IngestResponse:
+    """The receipt for a document that was written."""
     return IngestResponse(
-        id=document.metadata.id,
-        document_id=document_id,
-        title=title,
-        source_type=source_type,
-        char_count=document.metadata.char_count,
-        token_count=document.metadata.token_count,
-        chunk_count=len(chunks),
+        id=metadata.id,
+        document_id=metadata.document_id,
+        title=metadata.title,
+        source_type=metadata.source_type,
+        content_hash=metadata.content_hash,
+        char_count=metadata.char_count,
+        token_count=metadata.token_count,
+        chunk_count=metadata.chunk_count,
     )
+
+
+async def _held_with_hash(content_hash: str) -> DocumentMetadata | None:
+    """The document already stored under this signature, if there is one."""
+    found: list[Chunk] = await get_store().get_records(
+        DOCUMENTS_COLLECTION, filters={"content_hash": content_hash}, limit=1
+    )
+    if not found:
+        return None
+    return DocumentMetadata.from_metadata(found[0].metadata)
 
 
 async def _remove(document_id: str) -> None:

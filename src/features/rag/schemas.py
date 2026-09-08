@@ -122,6 +122,19 @@ class IngestResponse(BaseModel):
     chunk_count: int
 
 
+class DocumentsResponse(BaseModel):
+    """Every document the store holds, newest first."""
+
+    documents: list[DocumentMetadata] = Field(default_factory=list)
+
+
+class DeleteDocumentResponse(BaseModel):
+    """What was removed, and whether anything was."""
+
+    document_id: str
+    deleted: bool
+
+
 class DocumentResponse(BaseModel):
     metadata: DocumentMetadata
     text: str | None = None
@@ -152,7 +165,7 @@ class ChunksResponse(BaseModel):
 class SearchRequest(BaseModel):
     """A question, optionally narrowed to one document."""
 
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=255)
     document_id: str | None = None
     score_threshold: float | None = None
 
@@ -206,11 +219,35 @@ class HistoryMessage(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=255)
     history: list[HistoryMessage] = Field(default_factory=list)
+
+
+class ToolCall(BaseModel):
+    """One tool the agent reached for, and what it gave back.
+
+    Every tool is recorded, whatever it does -- what the clock or the translator
+    answered shaped the reply just as much as what a search turned up.
+    """
+
+    name: str
+    # The arguments as the model wrote them, as JSON. They differ per tool, so
+    # there is no one shape to give them.
+    arguments: str
+    output: str
+    # Whether `output` is the whole of what came back, or only its opening.
+    truncated: bool = False
+
+
+class AgentAnswer(BaseModel):
+    """What the agent settled on, and the work it did to get there."""
+
+    text: str
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
+    tool_calls: list[ToolCall] = Field(default_factory=list)

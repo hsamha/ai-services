@@ -8,7 +8,9 @@ from src.features.rag.schemas import (
     AskRequest,
     AskResponse,
     ChunksResponse,
+    DeleteDocumentResponse,
     DocumentResponse,
+    DocumentsResponse,
     IngestResponse,
     IngestTextRequest,
     SearchRequest,
@@ -48,10 +50,22 @@ async def upload_document(
     return await ingest.ingest_file(document_id, title, source_type, file)
 
 
+@router.get("/documents", response_model=DocumentsResponse)
+async def list_documents() -> DocumentsResponse:
+    """Every document in the store, newest first, without their text."""
+    return await service.list_documents()
+
+
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
 async def get_document(document_id: str) -> DocumentResponse:
     """The whole document, unless it is too long to be read in one piece."""
     return await service.get_document(document_id)
+
+
+@router.delete("/documents/{document_id}", response_model=DeleteDocumentResponse)
+async def delete_document(document_id: str) -> DeleteDocumentResponse:
+    """Remove a document and every chunk of it."""
+    return await service.delete_document(document_id)
 
 
 @router.get("/documents/{document_id}/chunks", response_model=ChunksResponse)

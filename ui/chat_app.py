@@ -3,15 +3,18 @@
 Run with:  streamlit run ui/chat_app.py
 """
 
+import json
+
 import streamlit as st
 
-from ui.schemas import ChatRole
+from ui.schemas import ChatRole, ToolCall
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, run
 
 st.set_page_config(page_title="Ask your documents", page_icon="📚", layout="centered")
 
 CHAT_KEY = "chat_state"
+WORKING_KEY = "show_working"
 
 AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "🤖"}
 
@@ -23,12 +26,45 @@ def chat_state() -> ChatState:
     return st.session_state[CHAT_KEY]
 
 
+def showing_working() -> bool:
+    """Whether the sidebar toggle is on. Read on every rerun, so it survives one."""
+    return bool(st.session_state.get(WORKING_KEY, False))
+
+
+def render_tool_calls(calls: list[ToolCall]) -> None:
+    """Every tool the agent ran for this turn, in the order it ran them."""
+    if not calls:
+        return
+
+    with st.expander(f"Tool calls ({len(calls)})"):
+        for position, call in enumerate(calls, start=1):
+            st.markdown(f"**{position}. `{call.name}`**")
+            st.json(_arguments(call))
+            st.code(call.output, language="json")
+            if call.truncated:
+                st.caption("Output cut short — raise MAX_TOOL_OUTPUT_CHARS to see all of it.")
+
+
+def _arguments(call: ToolCall) -> dict[str, object] | str:
+    """The arguments as a model would have written them, or the raw string."""
+    try:
+        return json.loads(call.arguments)
+    except ValueError:
+        return call.arguments
+
+
+def render_turn(turn: ChatTurn) -> None:
+    with st.chat_message(turn.role.value, avatar=AVATARS[turn.role]):
+        st.markdown(turn.content)
+        if turn.model:
+            st.caption(turn.model)
+        if showing_working():
+            render_tool_calls(turn.tool_calls)
+
+
 def render_history(state: ChatState) -> None:
     for turn in state.turns:
-        with st.chat_message(turn.role.value, avatar=AVATARS[turn.role]):
-            st.markdown(turn.content)
-            if turn.model:
-                st.caption(turn.model)
+        render_turn(turn)
 
 
 def answer(client: RAGClient, state: ChatState, question: str) -> None:
@@ -54,27 +90,17 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
                 return
         st.markdown(response.answer)
         st.caption(response.model)
+        if showing_working():
+            render_tool_calls(response.tool_calls)
 
     state.turns.append(
-        ChatTurn(role=ChatRole.ASSISTANT, content=response.answer, model=response.model)
+        ChatTurn(
+            role=ChatRole.ASSISTANT,
+            content=response.answer,
+            model=response.model,
+            tool_calls=response.tool_calls,
+        )
     )
-
-
-def sources_expander(client: RAGClient, question: str) -> None:
-    """What the retriever finds for the last question, shown on demand."""
-    with st.expander("What the retriever found"):
-        try:
-            results = run(client.search(question))
-        except APIError as error:
-            st.error(error.detail)
-            return
-        if not results.hits:
-            st.info("Nothing matched.")
-            return
-        for position, hit in enumerate(results.hits, start=1):
-            source = hit.metadata.get("document_id", "unknown")
-            st.markdown(f"**{position}. {source}** · score {hit.score:.3f}")
-            st.write(hit.text)
 
 
 def main() -> None:
@@ -90,19 +116,13 @@ def main() -> None:
         if st.button("Clear chat", width="stretch"):
             st.session_state[CHAT_KEY] = ChatState()
             st.rerun()
-        show_sources = st.toggle("Show retrieved chunks", value=False)
+        st.toggle("Show the agent's working", value=False, key=WORKING_KEY)
 
     render_history(state)
 
-    question = st.chat_input("Ask something about your documents")
+    question = st.chat_input("Ask something about your documents", max_chars=255)
     if question and question.strip():
         answer(client, state, question.strip())
-
-    last_user = next(
-        (turn for turn in reversed(state.turns) if turn.role is ChatRole.USER), None
-    )
-    if show_sources and last_user is not None:
-        sources_expander(client, last_user.content)
 
 
 main()

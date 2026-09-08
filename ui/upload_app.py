@@ -155,9 +155,59 @@ def inspect_tab(client: RAGClient) -> None:
                     st.write(chunk.text)
 
 
+def library_tab(client: RAGClient) -> None:
+    """Everything in the store, and the way to take something back out."""
+    try:
+        library = run(client.list_documents())
+    except APIError as error:
+        st.error(error.detail)
+        return
+
+    if not library.documents:
+        st.info("The store is empty.")
+        return
+
+    st.caption(f"{len(library.documents)} documents")
+    st.dataframe(
+        [
+            {
+                "Document id": item.document_id,
+                "Title": item.title,
+                "Type": item.source_type.value,
+                "Tokens": item.token_count,
+                "Chunks": item.chunk_count,
+                "Stored": item.created_at,
+            }
+            for item in library.documents
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.subheader("Remove a document")
+    document_id = st.selectbox(
+        "Document id",
+        options=[item.document_id for item in library.documents],
+    )
+    # Deleting takes the chunks with it and cannot be undone, so it is asked for twice.
+    sure = st.checkbox(f"Yes, delete `{document_id}` and all of its chunks.")
+
+    if not st.button("Delete", type="primary", disabled=not sure):
+        return
+
+    try:
+        run(client.delete_document(document_id))
+    except APIError as error:
+        st.error(error.detail)
+        return
+
+    st.success(f"Deleted `{document_id}`.")
+    st.rerun()
+
+
 def search_tab(client: RAGClient) -> None:
     """Check that a document can actually be found, before asking the chatbot."""
-    query = st.text_input("Query")
+    query = st.text_input("Query", max_chars=255)
     document_id = st.text_input("Narrow to one document id", value="")
     threshold = st.slider("Score threshold", 0.0, 1.0, 0.0, 0.01)
 
@@ -197,11 +247,15 @@ def main() -> None:
         st.subheader("This session")
         st.metric("Documents stored", len(ingested()))
 
-    files, text, inspect, search = st.tabs(["Files", "Paste text", "Inspect", "Search"])
+    files, text, library, inspect, search = st.tabs(
+        ["Files", "Paste text", "Library", "Inspect", "Search"]
+    )
     with files:
         upload_files_tab(client)
     with text:
         paste_text_tab(client)
+    with library:
+        library_tab(client)
     with inspect:
         inspect_tab(client)
     with search:

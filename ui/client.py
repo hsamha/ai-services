@@ -19,7 +19,9 @@ from ui.schemas import (
     AskResponse,
     ChatRole,
     ChunksResponse,
+    DeleteDocumentResponse,
     DocumentResponse,
+    DocumentsResponse,
     FileType,
     HistoryMessage,
     IngestResponse,
@@ -27,6 +29,7 @@ from ui.schemas import (
     ModelsResponse,
     SearchRequest,
     SearchResponse,
+    ToolCall,
 )
 from ui.settings import UISettings, get_ui_settings
 
@@ -134,6 +137,11 @@ class RAGClient(BaseModel):
 
     # -------------------------------------------------------------- reading
 
+    async def list_documents(self) -> DocumentsResponse:
+        """Every document in the store, newest first."""
+        payload = await self._request("GET", "/rag/documents")
+        return DocumentsResponse.model_validate(payload)
+
     async def get_document(self, document_id: str) -> DocumentResponse:
         payload = await self._request("GET", f"/rag/documents/{document_id}")
         return DocumentResponse.model_validate(payload)
@@ -141,6 +149,11 @@ class RAGClient(BaseModel):
     async def get_document_chunks(self, document_id: str) -> ChunksResponse:
         payload = await self._request("GET", f"/rag/documents/{document_id}/chunks")
         return ChunksResponse.model_validate(payload)
+
+    async def delete_document(self, document_id: str) -> DeleteDocumentResponse:
+        """Remove a document and every chunk of it."""
+        payload = await self._request("DELETE", f"/rag/documents/{document_id}")
+        return DeleteDocumentResponse.model_validate(payload)
 
     async def expand_chunk(self, chunk_id: str, window: int = 1) -> ChunksResponse:
         payload = await self._request(
@@ -191,6 +204,8 @@ class ChatTurn(BaseModel):
     role: ChatRole
     content: str
     model: str = ""
+    # What the agent ran for this turn. Empty on anything the user said.
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
     def to_history(self) -> HistoryMessage:
         return HistoryMessage(role=self.role, content=self.content)

@@ -103,7 +103,7 @@ async def _store(
         for index, piece in enumerate(pieces)
     ]
 
-    await _remove(document_id)
+    await remove_records(document_id)
 
     store = get_store()
     await store.add_records(DOCUMENTS_COLLECTION, [document.to_chunk()])
@@ -137,7 +137,7 @@ async def _held_with_hash(content_hash: str) -> DocumentMetadata | None:
     return DocumentMetadata.from_metadata(found[0].metadata)
 
 
-async def _remove(document_id: str) -> None:
+async def remove_records(document_id: str) -> None:
     """Clear out whatever is already stored under this document id."""
     store = get_store()
     for collection in (DOCUMENTS_COLLECTION, CHUNKS_COLLECTION):

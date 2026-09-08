@@ -10,8 +10,10 @@ from src.features.rag.schemas import (
     ChunkRecord,
     ChunkResponse,
     ChunksResponse,
+    DeleteDocumentResponse,
     DocumentRecord,
     DocumentResponse,
+    DocumentsResponse,
     SearchRequest,
     SearchResponse,
 )
@@ -104,12 +106,36 @@ async def _chunks_of(document_id: str) -> list[ChunkRecord]:
 
 
 
+async def list_documents() -> DocumentsResponse:
+    """Every document the store holds, newest first."""
+    found: list[Chunk] = await get_store().get_records(DOCUMENTS_COLLECTION)
+    documents = [DocumentRecord.from_chunk(point).metadata for point in found]
+    # A store returns points in whatever order suits it, so ordering is ours.
+    return DocumentsResponse(
+        documents=sorted(documents, key=lambda metadata: metadata.created_at, reverse=True)
+    )
+
+
+async def delete_document(document_id: str) -> DeleteDocumentResponse:
+    """Remove a document and every chunk of it, or a 404 if it was never stored."""
+    from src.features.rag import ingest
+
+    # Raises when there is nothing there, so a delete never quietly succeeds.
+    await _document(document_id)
+    await ingest.remove_records(document_id)
+
+    return DeleteDocumentResponse(document_id=document_id, deleted=True)
+
+
 async def ask(body: AskRequest) -> AskResponse:
-    """Put a question to the agent"""
+    """Put a question to the agent, with the tool calls behind the reply."""
     from src.features.rag import agent
+
+    settled = await agent.answer(body.question, body.history)
 
     return AskResponse(
         question=body.question,
-        answer=await agent.answer(body.question, body.history),
+        answer=settled.text,
         model=get_text_llm_name(),
+        tool_calls=settled.tool_calls,
     )

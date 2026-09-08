@@ -12,11 +12,7 @@ from src.context import get_context
 from src.core.llm.factory import get_text_llm, get_text_llm_name
 from src.features.rag.constants import ChatRole
 from src.features.rag.prompts import SYSTEM_PROMPT
-from src.features.rag.schemas import (
-    AgentAnswer,
-    HistoryMessage,
-    ToolCall,
-)
+from src.features.rag.schemas import AgentAnswer, HistoryMessage
 from src.features.rag.tools import get_tools
 from src.settings import get_settings
 
@@ -66,7 +62,7 @@ async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
     messages: list[BaseMessage] = result["messages"]
     _log_tool_calls(messages)
 
-    return AgentAnswer(text=_text(messages[-1]), tool_calls=_tool_calls(messages))
+    return AgentAnswer(text=_text(messages[-1]), transcript=_transcript(messages))
 
 
 def _conversation(question: str, history: list[HistoryMessage]) -> list[BaseMessage]:
@@ -123,43 +119,16 @@ def _log_tool_calls(messages: list[BaseMessage]) -> None:
     logger.info("%s", _RULE * 3)
 
 
-def _tool_calls(messages: list[BaseMessage]) -> list[ToolCall]:
-    """Every tool the agent reached for, in the order it worked.
+def _transcript(messages: list[BaseMessage]) -> str:
+    """The whole run as JSON -- every message, as its own provider shaped it.
 
-    A call and its result are two separate messages, tied together by the id
-    the model gave the call -- so the results are indexed first, then each call
-    is matched to its own. A call still waiting on its result is not reported.
+    Dumped rather than picked over: a message carries the tool calls it made,
+    the output it got back and whatever the provider hung off it, and any of
+    that can be the thing you need when an answer comes out wrong.
     """
-    results: dict[str, ToolMessage] = {
-        message.tool_call_id: message
-        for message in messages
-        if isinstance(message, ToolMessage) and message.tool_call_id
-    }
-
-    calls: list[ToolCall] = []
-    for message in messages:
-        if not isinstance(message, AIMessage):
-            continue
-        for call in message.tool_calls:
-            result = results.get(call["id"] or "")
-            if result is None:
-                continue
-            output, truncated = _clip(_text(result))
-            calls.append(
-                ToolCall(
-                    name=call["name"],
-                    arguments=json.dumps(call["args"], ensure_ascii=False, default=str),
-                    output=output,
-                    truncated=truncated,
-                )
-            )
-
-    return calls
-
-
-def _clip(output: str) -> tuple[str, bool]:
-    """Keep a tool's answer readable. A whole document is more than a reader wants."""
-    limit = 4000
-    if limit <= 0 or len(output) <= limit:
-        return output, False
-    return output[:limit], True
+    return json.dumps(
+        [message.model_dump() for message in messages],
+        ensure_ascii=False,
+        # A message can hold a datetime or a provider object json does not know.
+        default=str,
+    )

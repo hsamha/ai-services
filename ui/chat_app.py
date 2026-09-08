@@ -7,14 +7,14 @@ import json
 
 import streamlit as st
 
-from ui.schemas import ChatRole, ToolCall
+from ui.schemas import ChatRole
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, run
 
 st.set_page_config(page_title="Ask your documents", page_icon="📚", layout="centered")
 
 CHAT_KEY = "chat_state"
-WORKING_KEY = "show_working"
+TRANSCRIPT_KEY = "show_transcript"
 
 AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "🤖"}
 
@@ -26,31 +26,29 @@ def chat_state() -> ChatState:
     return st.session_state[CHAT_KEY]
 
 
-def showing_working() -> bool:
+def showing_transcript() -> bool:
     """Whether the sidebar toggle is on. Read on every rerun, so it survives one."""
-    return bool(st.session_state.get(WORKING_KEY, False))
+    return bool(st.session_state.get(TRANSCRIPT_KEY, False))
 
 
-def render_tool_calls(calls: list[ToolCall]) -> None:
-    """Every tool the agent ran for this turn, in the order it ran them."""
-    if not calls:
+def render_transcript(transcript: str) -> None:
+    """The whole run, as the service reported it.
+
+    Shown as it came, not summarised: every message, its tool calls, what each
+    one returned, and whatever the provider hung off them.
+    """
+    if not transcript:
         return
 
-    with st.expander(f"Tool calls ({len(calls)})"):
-        for position, call in enumerate(calls, start=1):
-            st.markdown(f"**{position}. `{call.name}`**")
-            st.json(_arguments(call))
-            st.code(call.output, language="json")
-            if call.truncated:
-                st.caption("Output cut short — raise MAX_TOOL_OUTPUT_CHARS to see all of it.")
-
-
-def _arguments(call: ToolCall) -> dict[str, object] | str:
-    """The arguments as a model would have written them, or the raw string."""
     try:
-        return json.loads(call.arguments)
+        messages = json.loads(transcript)
     except ValueError:
-        return call.arguments
+        st.caption("The transcript could not be read as JSON.")
+        st.code(transcript)
+        return
+
+    with st.expander(f"Transcript ({len(messages)} messages)"):
+        st.json(messages, expanded=2)
 
 
 def render_turn(turn: ChatTurn) -> None:
@@ -58,8 +56,8 @@ def render_turn(turn: ChatTurn) -> None:
         st.markdown(turn.content)
         if turn.model:
             st.caption(turn.model)
-        if showing_working():
-            render_tool_calls(turn.tool_calls)
+        if showing_transcript():
+            render_transcript(turn.transcript)
 
 
 def render_history(state: ChatState) -> None:
@@ -90,15 +88,15 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
                 return
         st.markdown(response.answer)
         st.caption(response.model)
-        if showing_working():
-            render_tool_calls(response.tool_calls)
+        if showing_transcript():
+            render_transcript(response.transcript)
 
     state.turns.append(
         ChatTurn(
             role=ChatRole.ASSISTANT,
             content=response.answer,
             model=response.model,
-            tool_calls=response.tool_calls,
+            transcript=response.transcript,
         )
     )
 
@@ -116,7 +114,7 @@ def main() -> None:
         if st.button("Clear chat", width="stretch"):
             st.session_state[CHAT_KEY] = ChatState()
             st.rerun()
-        st.toggle("Show the agent's working", value=False, key=WORKING_KEY)
+        st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
 
     render_history(state)
 

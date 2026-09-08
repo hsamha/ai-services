@@ -137,21 +137,12 @@ class SearchResponse(BaseModel):
     hits: list[SearchHit] = Field(default_factory=list)
 
 
-class ToolCall(BaseModel):
-    """One tool the agent reached for, and what it gave back."""
-
-    name: str
-    # The arguments as the model wrote them, as JSON.
-    arguments: str
-    output: str
-    truncated: bool = False
-
-
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
-    tool_calls: list[ToolCall] = Field(default_factory=list)
+    # Every message of the run, as JSON.
+    transcript: str = "[]"
 
 
 class ModelInfo(BaseModel):

@@ -29,7 +29,6 @@ from ui.schemas import (
     ModelsResponse,
     SearchRequest,
     SearchResponse,
-    ToolCall,
 )
 from ui.settings import UISettings, get_ui_settings
 
@@ -204,8 +203,8 @@ class ChatTurn(BaseModel):
     role: ChatRole
     content: str
     model: str = ""
-    # What the agent ran for this turn. Empty on anything the user said.
-    tool_calls: list[ToolCall] = Field(default_factory=list)
+    # The whole run as JSON. Empty on anything the user said.
+    transcript: str = ""
 
     def to_history(self) -> HistoryMessage:
         return HistoryMessage(role=self.role, content=self.content)

@@ -223,31 +223,18 @@ class AskRequest(BaseModel):
     history: list[HistoryMessage] = Field(default_factory=list)
 
 
-class ToolCall(BaseModel):
-    """One tool the agent reached for, and what it gave back.
-
-    Every tool is recorded, whatever it does -- what the clock or the translator
-    answered shaped the reply just as much as what a search turned up.
-    """
-
-    name: str
-    # The arguments as the model wrote them, as JSON. They differ per tool, so
-    # there is no one shape to give them.
-    arguments: str
-    output: str
-    # Whether `output` is the whole of what came back, or only its opening.
-    truncated: bool = False
-
-
 class AgentAnswer(BaseModel):
-    """What the agent settled on, and the work it did to get there."""
+    """What the agent settled on, and the whole run behind it."""
 
     text: str
-    tool_calls: list[ToolCall] = Field(default_factory=list)
+    transcript: str
 
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
-    tool_calls: list[ToolCall] = Field(default_factory=list)
+    # Every message of the run, as JSON: the question, what the model said, each
+    # tool call and what it returned. A string, because a message is whatever
+    # its provider makes it and there is no one shape to promise.
+    transcript: str = "[]"

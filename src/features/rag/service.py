@@ -128,7 +128,7 @@ async def delete_document(document_id: str) -> DeleteDocumentResponse:
 
 
 async def ask(body: AskRequest) -> AskResponse:
-    """Put a question to the agent, with the tool calls behind the reply."""
+    """Put a question to the agent, with the whole run behind the reply."""
     from src.features.rag import agent
 
     settled = await agent.answer(body.question, body.history)
@@ -137,5 +137,5 @@ async def ask(body: AskRequest) -> AskResponse:
         question=body.question,
         answer=settled.text,
         model=get_text_llm_name(),
-        tool_calls=settled.tool_calls,
+        transcript=settled.transcript,
     )

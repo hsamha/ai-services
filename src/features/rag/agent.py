@@ -2,7 +2,6 @@ import json
 import logging
 from functools import lru_cache
 
-from fastapi import HTTPException, status
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
@@ -11,7 +10,12 @@ from langgraph.graph.state import CompiledStateGraph
 from src.context import get_context
 from src.core.llm.factory import get_text_llm, get_text_llm_name
 from src.features.rag import language
-from src.features.rag.constants import AnswerLanguage, ChatRole
+from src.features.rag.constants import (
+    TOO_MANY_STEPS_ANSWER,
+    TROUBLE_ANSWER,
+    AnswerLanguage,
+    ChatRole,
+)
 from src.features.rag.prompts import SYSTEM_PROMPT
 from src.features.rag.schemas import AgentAnswer, HistoryMessage
 from src.features.rag.tools import get_tools
@@ -53,7 +57,22 @@ def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> Compile
 
 
 async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
-    """Put the question to the agent, with the passages it leaned on."""
+    """Put the question to the agent, with the passages it leaned on.
+
+    A run that cannot finish still answers. Whatever went wrong -- the provider
+    refusing, a step too many, a bug of our own -- the caller is a person typing
+    in a chat box, and they get one plain line saying so rather than a status
+    code and an empty screen. The exception itself is logged in full.
+    """
+    try:
+        return await _run(question, history)
+    except Exception:
+        logger.exception("The run failed. Answering with the standing message.")
+        return AgentAnswer(text=TROUBLE_ANSWER, transcript="[]")
+
+
+async def _run(question: str, history: list[HistoryMessage]) -> AgentAnswer:
+    """The question put to the agent, for real."""
     answer_language = await language.detect(question)
     logger.info("Answering in %s", answer_language)
 
@@ -62,16 +81,24 @@ async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
             {"messages": _conversation(question, history)},
             config={"recursion_limit": get_settings().max_agent_steps * 2},
         )
-    except GraphRecursionError as error:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="The question took too many retrieval steps to settle. Try a narrower one.",
-        ) from error
+    except GraphRecursionError:
+        # Not a failure of ours to hide: the agent kept searching and never
+        # settled, and saying which is the difference between "try again" and
+        # "ask something narrower".
+        logger.warning("The question took too many steps to settle.")
+        return AgentAnswer(text=TOO_MANY_STEPS_ANSWER, transcript="[]")
 
     messages: list[BaseMessage] = result["messages"]
     _log_tool_calls(messages)
 
-    return AgentAnswer(text=_text(messages[-1]), transcript=_transcript(messages))
+    text = _text(messages[-1]).strip()
+    if not text:
+        # The run finished and said nothing. Nothing to show, so say so rather
+        # than hand back a blank bubble.
+        logger.warning("The run finished with an empty answer.")
+        return AgentAnswer(text=TROUBLE_ANSWER, transcript=_transcript(messages))
+
+    return AgentAnswer(text=text, transcript=_transcript(messages))
 
 
 def _conversation(question: str, history: list[HistoryMessage]) -> list[BaseMessage]:

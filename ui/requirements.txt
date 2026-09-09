@@ -1,9 +1,9 @@
 # The Streamlit apps stand on their own -- everything they need is here.
-streamlit
+streamlit==1.63.0
 
 # Config
-pydantic
-pydantic-settings
+pydantic==2.13.5
+pydantic-settings==2.15.0
 
 # Async I/O
-httpx
+httpx==0.28.1

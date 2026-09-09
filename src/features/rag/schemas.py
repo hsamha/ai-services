@@ -184,6 +184,21 @@ class SearchResponse(BaseModel):
 # -------------------------------------------------------------- what tools answer
 
 
+class MaterialResponse(BaseModel):
+    """One article of the constitution, as it stands in the source text."""
+
+    number: int
+    text: str
+
+
+class SectionResponse(BaseModel):
+    """One chapter of the constitution, whole, with the articles it holds."""
+
+    number: int
+    title: str
+    text: str
+
+
 class CurrentDateTime(BaseModel):
     """The clock, as the datetime tool reports it."""
 

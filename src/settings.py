@@ -34,6 +34,10 @@ class Settings(BaseSettings):
 
     timezone: str = "Asia/Amman"
 
+    # Where the constitution was split to, relative to the project root.
+    materials_dir: str = "data/materials"
+    sections_dir: str = "data/sections"
+
 
     tool_search_knowledge_base: bool = True
     tool_read_document: bool = True
@@ -42,6 +46,8 @@ class Settings(BaseSettings):
     tool_current_datetime: bool = True
     tool_translate: bool = True
     tool_openai_web_search: bool = True
+    tool_get_material: bool = True
+    tool_get_section: bool = True
 
 
 @lru_cache

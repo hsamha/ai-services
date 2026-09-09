@@ -10,7 +10,7 @@ from src.context import get_context
 from src.core.llm.constants import PROVIDER_BY_MODEL
 from src.core.llm.enums import LLMProvider
 from src.core.llm.factory import get_text_llm, get_text_llm_name
-from src.features.rag import service
+from src.features.rag import corpus, service
 from src.features.rag.prompts import TRANSLATE_PROMPT
 from src.features.rag.schemas import (
     CurrentDateTime,
@@ -102,6 +102,40 @@ async def expand_chunk(chunk_id: str, window: int = 1) -> str:
             raise it when the answer is still cut off.
     """
     return _as_json(await service.expand_chunk(chunk_id, window))
+
+
+@tool(parse_docstring=True)
+async def get_material(number: int) -> str:
+    """Read one numbered article (مادة) of the constitution, in full.
+
+    Use this whenever a question names an article by its number, or when a
+    passage you have read cites one -- it gives back that article whole, so
+    nothing is cut off the way a search hit can be. Ask for the articles a
+    citation names rather than guessing what they say.
+
+    Args:
+        number: The article number as the text writes it, so 96 for
+            "المادة (96)". A number no article carries comes back as an error
+            naming the range that exists.
+    """
+    return _as_json(await corpus.get_material(number))
+
+
+@tool(parse_docstring=True)
+async def get_section(number: int) -> str:
+    """Read one numbered chapter (فصل) of the constitution, in full.
+
+    A chapter holds every article on one subject -- rights, the executive, the
+    judiciary -- so use this when a question is about a whole topic rather than
+    a single article, or to see which articles a chapter covers before reading
+    them one by one. Chapters are long; prefer an article when you know which.
+
+    Args:
+        number: The chapter number, counting from one in the order the
+            constitution sets them out. A number no chapter carries comes back
+            as an error naming the range that exists.
+    """
+    return _as_json(await corpus.get_section(number))
 
 
 @tool(parse_docstring=True)
@@ -208,6 +242,8 @@ def get_tools() -> list[BaseTool]:
         (settings.tool_read_document, read_document),
         (settings.tool_list_document_chunks, list_document_chunks),
         (settings.tool_expand_chunk, expand_chunk),
+        (settings.tool_get_material, get_material),
+        (settings.tool_get_section, get_section),
         (settings.tool_current_datetime, current_datetime),
         (settings.tool_translate, translate),
         (

@@ -8,6 +8,7 @@ from src.core.tools.loaders.registry import get_loader
 from src.core.types import Chunk
 from src.core.vectorstores.registry import get_store
 from src.features.rag.collections import ensure_collections
+from src.features.rag.sanitize import sanitize
 from src.features.rag.constants import CHUNKS_COLLECTION, DOCUMENTS_COLLECTION
 from src.features.rag.schemas import (
     ChunkMetadata,
@@ -32,7 +33,10 @@ async def ingest_text(document_id: str, title: str, text: str) -> IngestResponse
     """Store text sent inline."""
     if not text.strip():
         _reject_empty("The text is empty.")
-    return await _store(document_id, title, text, FileType.TEXT, _signature(text.encode()))
+    # Fingerprinted as it arrived, before any normalization — the same rule the upload
+    # path follows with its bytes.
+    content_hash = _signature(text.encode())
+    return await _store(document_id, title, sanitize(text), FileType.TEXT, content_hash)
 
 
 async def ingest_file(
@@ -54,8 +58,9 @@ async def ingest_file(
     return await _store(
         document_id,
         title or upload.filename or document_id,
-        text,
+        sanitize(text),
         source_type,
+        # Fingerprinted from the bytes as uploaded, before loading or normalization.
         _signature(raw),
     )
 

@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Awaitable
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -15,15 +17,52 @@ from src.features.rag.prompts import TRANSLATE_PROMPT
 from src.features.rag.schemas import (
     CurrentDateTime,
     SearchRequest,
+    ToolFailure,
     Translation,
     WebSearchResult,
 )
 from src.settings import get_settings
 
 
+logger = logging.getLogger(__name__)
+
+
 def _as_json(payload: BaseModel) -> str:
     """What the model is handed back. Compact, and no Python repr in sight."""
     return payload.model_dump_json(exclude_none=True)
+
+
+def _is_empty(payload: BaseModel) -> bool:
+    echoed = {"query", "number", "document_id"}
+
+    carried = [
+        value
+        for name, value in payload
+        if name not in echoed and isinstance(value, (str, list, dict, type(None)))
+    ]
+
+    return bool(carried) and all(
+        not value.strip() if isinstance(value, str) else not value for value in carried
+    )
+
+
+async def _result(call: Awaitable[BaseModel]) -> str:
+    try:
+        payload = await call
+    except HTTPException as error:
+        logger.info("Tool failed: %s", error.detail)
+        return _as_json(ToolFailure(error=str(error.detail)))
+
+    if _is_empty(payload):
+        logger.info("Tool found nothing: %s", type(payload).__name__)
+        return _as_json(
+            ToolFailure(
+                error="Nothing found. The knowledge base does not hold this -- "
+                "say so, rather than answering from anywhere else."
+            )
+        )
+
+    return _as_json(payload)
 
 
 @tool(parse_docstring=True)
@@ -52,8 +91,8 @@ async def search_knowledge_base(
         score_threshold: Drop anything matching more weakly than this. Leave it
             out unless the results are coming back too loose.
     """
-    return _as_json(
-        await service.search(
+    return await _result(
+        service.search(
             SearchRequest(query=query, document_id=document_id, score_threshold=score_threshold)
         )
     )
@@ -72,7 +111,7 @@ async def read_document(document_id: str) -> str:
         document_id: The id the document was stored under, as a search hit or
             a chunk reports it. Never invent one.
     """
-    return _as_json(await service.get_document(document_id))
+    return await _result(service.get_document(document_id))
 
 
 @tool(parse_docstring=True)
@@ -85,7 +124,7 @@ async def list_document_chunks(document_id: str) -> str:
     Args:
         document_id: The id the document was stored under. Never invent one.
     """
-    return _as_json(await service.get_document_chunks(document_id))
+    return await _result(service.get_document_chunks(document_id))
 
 
 @tool(parse_docstring=True)
@@ -101,7 +140,7 @@ async def expand_chunk(chunk_id: str, window: int = 1) -> str:
         window: How many neighbours to take on each side. One is usually enough;
             raise it when the answer is still cut off.
     """
-    return _as_json(await service.expand_chunk(chunk_id, window))
+    return await _result(service.expand_chunk(chunk_id, window))
 
 
 @tool(parse_docstring=True)
@@ -118,7 +157,7 @@ async def get_material(number: int) -> str:
             "المادة (96)". A number no article carries comes back as an error
             naming the range that exists.
     """
-    return _as_json(await corpus.get_material(number))
+    return await _result(corpus.get_material(number))
 
 
 @tool(parse_docstring=True)
@@ -135,7 +174,7 @@ async def get_section(number: int) -> str:
             constitution sets them out. A number no chapter carries comes back
             as an error naming the range that exists.
     """
-    return _as_json(await corpus.get_section(number))
+    return await _result(corpus.get_section(number))
 
 
 @tool(parse_docstring=True)
@@ -146,8 +185,12 @@ async def current_datetime() -> str:
     is, whether a date has passed, what "last year" or "next month" refers to.
     You have no clock of your own, so never work a date out from memory.
     """
-    settings = get_settings()
-    name = settings.timezone
+    return await _result(_now())
+
+
+async def _now() -> CurrentDateTime:
+    """The clock, read in the timezone the service is configured for."""
+    name = get_settings().timezone
 
     try:
         zone = ZoneInfo(name)
@@ -159,14 +202,12 @@ async def current_datetime() -> str:
 
     now = datetime.now(zone)
 
-    return _as_json(
-        CurrentDateTime(
-            iso=now.isoformat(),
-            timezone=name,
-            readable=now.strftime("%d %B %Y, %H:%M"),
-            weekday=now.strftime("%A"),
-            utc_offset=now.strftime("%z"),
-        )
+    return CurrentDateTime(
+        iso=now.isoformat(),
+        timezone=name,
+        readable=now.strftime("%d %B %Y, %H:%M"),
+        weekday=now.strftime("%A"),
+        utc_offset=now.strftime("%z"),
     )
 
 
@@ -186,16 +227,27 @@ async def translate(text: str, target_language: str, source_language: str | None
         source_language: The language the text is in, if you know it. Leave it
             out to let the model work it out.
     """
-    translated = await get_text_llm().ask(
-        TRANSLATE_PROMPT.format(target_language=target_language, text=text)
-    )
+    return await _result(_translate(text, target_language, source_language))
 
-    return _as_json(
-        Translation(
-            text=translated.strip(),
-            target_language=target_language,
-            source_language=source_language,
+
+async def _translate(
+    text: str, target_language: str, source_language: str | None
+) -> Translation:
+    """The text in the language asked for, as the model renders it."""
+    try:
+        translated = await get_text_llm().ask(
+            TRANSLATE_PROMPT.format(target_language=target_language, text=text)
         )
+    except OpenAIError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"The translation failed: {error}",
+        ) from error
+
+    return Translation(
+        text=translated.strip(),
+        target_language=target_language,
+        source_language=source_language,
     )
 
 
@@ -211,6 +263,11 @@ async def openai_web_search(query: str) -> str:
     Args:
         query: What to look up, in full and in plain words.
     """
+    return await _result(_web_search(query))
+
+
+async def _web_search(query: str) -> WebSearchResult:
+    """What the open web says, through OpenAI's own hosted search tool."""
     client = AsyncOpenAI(api_key=get_context().provider_key)
 
     try:
@@ -225,7 +282,7 @@ async def openai_web_search(query: str) -> str:
             detail=f"The web search failed: {error}",
         ) from error
 
-    return _as_json(WebSearchResult(query=query, answer=response.output_text.strip()))
+    return WebSearchResult(query=query, answer=response.output_text.strip())
 
 
 def _serves_openai(model: str) -> bool:

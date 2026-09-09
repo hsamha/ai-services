@@ -225,6 +225,16 @@ class WebSearchResult(BaseModel):
     answer: str
 
 
+class ToolFailure(BaseModel):
+    """A tool that could not do what it was asked, told to the model as a result.
+
+    A failed tool is a step the agent takes back, not the end of the answer, so
+    the reason comes back as the tool's own output rather than as an exception.
+    """
+
+    error: str
+
+
 # ------------------------------------------------------------------- the agent
 
 

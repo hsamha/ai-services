@@ -15,6 +15,10 @@ st.set_page_config(page_title="Ask your documents", page_icon="📚", layout="ce
 
 CHAT_KEY = "chat_state"
 TRANSCRIPT_KEY = "show_transcript"
+BUSY_KEY = "answering"
+PENDING_KEY = "pending_question"
+
+DISCLAIMER = "AI can make mistakes — double-check important answers."
 
 AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "🤖"}
 
@@ -108,19 +112,40 @@ def main() -> None:
     client = connection_sidebar(with_model=True)
     state = chat_state()
 
+    # True while an answer is in flight: the input is locked until it lands.
+    busy = bool(st.session_state.get(BUSY_KEY, False))
+
     with st.sidebar:
         st.subheader("Conversation")
         st.metric("Messages", len(state.turns))
-        if st.button("Clear chat", width="stretch"):
+        if st.button("Clear chat", width="stretch", disabled=busy):
             st.session_state[CHAT_KEY] = ChatState()
             st.rerun()
         st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
 
     render_history(state)
 
-    question = st.chat_input("Ask something about your documents", max_chars=255)
+    st.caption(DISCLAIMER)
+    question = st.chat_input(
+        "Answering…" if busy else "Ask something about your documents",
+        max_chars=255,
+        disabled=busy,
+    )
+
+    # Park the question and rerun, so the input comes back disabled before the
+    # call goes out -- a widget already on screen cannot be locked mid-script.
     if question and question.strip():
-        answer(client, state, question.strip())
+        st.session_state[PENDING_KEY] = question.strip()
+        st.session_state[BUSY_KEY] = True
+        st.rerun()
+
+    pending = st.session_state.pop(PENDING_KEY, None)
+    if pending:
+        try:
+            answer(client, state, pending)
+        finally:
+            st.session_state[BUSY_KEY] = False
+            st.rerun()
 
 
 main()

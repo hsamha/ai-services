@@ -11,7 +11,7 @@ from ui.schemas import ChatRole
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, run
 
-st.set_page_config(page_title="Ask your documents", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Jordanian Constitution Assistant", page_icon="📚", layout="centered")
 
 CHAT_KEY = "chat_state"
 TRANSCRIPT_KEY = "show_transcript"
@@ -19,6 +19,74 @@ BUSY_KEY = "answering"
 PENDING_KEY = "pending_question"
 
 DISCLAIMER = "AI can make mistakes — double-check important answers."
+
+TITLE = "📚 Jordanian Constitution Assistant"
+
+# Sits under the title, saying in one line what the assistant is for. The
+# `{link}` is filled with the source link, so the name of the text doubles as
+# the way to reach the official wording.
+SUBTITLE = "Ask and get answers about the {link}"
+
+LINK_TEXT = "Jordanian Constitution"
+
+# Where the text came from, so an answer can be checked against the official
+# wording rather than taken on trust.
+SOURCE_URL = (
+    "https://representatives.jo/Ar/Pages/"
+    "%D8%A7%D9%84%D8%AF%D8%B3%D8%AA%D9%88%D8%B1"
+)
+
+# Streamlit's own title wraps on a narrow screen, so the heading is sized in
+# viewport units instead: it shrinks with the window and stays on one line.
+# The clamp keeps it readable on a phone and stops it outgrowing the column
+# on a wide monitor, where vw would otherwise run past the centred container.
+STYLE = """
+<style>
+/* Streamlit styles headings as `[data-testid="stMarkdownContainer"] h1`, which
+   outranks a bare class, so this has to match at least as tightly and force
+   the size. Element + class, plus !important, holds against a version bump. */
+h1.app-title,
+[data-testid="stMarkdownContainer"] h1.app-title {
+    font-size: clamp(0.85rem, 3.2vw, 1.6rem) !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    margin: 0 0 0.75rem 0 !important;
+    padding: 0 !important;
+}
+.app-subtitle,
+[data-testid="stMarkdownContainer"] .app-subtitle {
+    font-size: clamp(0.75rem, 2vw, 0.95rem) !important;
+    opacity: 0.7;
+    margin: 0 0 1.5rem 0 !important;
+}
+/* The source link sits inside the sentence, so it is underlined rather than
+   recoloured -- clearly a link, without breaking the line up. */
+.app-subtitle a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+.app-subtitle a:hover { opacity: 1; }
+/* The chat input is docked to the bottom of the window, so the disclaimer is
+   pinned under it rather than written after it -- anything written after it in
+   the script would render above it instead. */
+.app-disclaimer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0.4rem;
+    text-align: center;
+    font-size: 0.75rem;
+    opacity: 0.6;
+    z-index: 1000;
+    /* Never swallow a click meant for the input above it. */
+    pointer-events: none;
+}
+/* Make room for it, so the input does not sit flush on top of the text. */
+[data-testid="stBottomBlockContainer"] { padding-bottom: 2.5rem; }
+</style>
+"""
 
 AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "🤖"}
 
@@ -106,8 +174,13 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
 
 
 def main() -> None:
-    st.title("📚 Ask your documents")
-    st.caption("Answers come from the documents in the store.")
+    st.markdown(STYLE, unsafe_allow_html=True)
+    st.markdown(f'<h1 class="app-title">{TITLE}</h1>', unsafe_allow_html=True)
+    link = f'<a href="{SOURCE_URL}" target="_blank" rel="noopener">{LINK_TEXT}</a>'
+    st.markdown(
+        f'<p class="app-subtitle">{SUBTITLE.format(link=link)}</p>',
+        unsafe_allow_html=True,
+    )
 
     client = connection_sidebar(with_model=True)
     state = chat_state()
@@ -125,12 +198,13 @@ def main() -> None:
 
     render_history(state)
 
-    st.caption(DISCLAIMER)
     question = st.chat_input(
-        "Answering…" if busy else "Ask something about your documents",
+        "Thinking…" if busy else "Ask something about Jordanian constitution",
         max_chars=255,
         disabled=busy,
     )
+
+    st.markdown(f'<div class="app-disclaimer">{DISCLAIMER}</div>', unsafe_allow_html=True)
 
     # Park the question and rerun, so the input comes back disabled before the
     # call goes out -- a widget already on screen cannot be locked mid-script.

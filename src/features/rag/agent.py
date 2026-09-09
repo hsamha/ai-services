@@ -10,7 +10,8 @@ from langgraph.graph.state import CompiledStateGraph
 
 from src.context import get_context
 from src.core.llm.factory import get_text_llm, get_text_llm_name
-from src.features.rag.constants import ChatRole
+from src.features.rag import language
+from src.features.rag.constants import AnswerLanguage, ChatRole
 from src.features.rag.prompts import SYSTEM_PROMPT
 from src.features.rag.schemas import AgentAnswer, HistoryMessage
 from src.features.rag.tools import get_tools
@@ -21,35 +22,43 @@ logger = logging.getLogger(__name__)
 
 _RULE = "─" * 22
 
-def get_agent() -> CompiledStateGraph:
-    """The agent for the request being handled."""
-    return _build(get_context().provider_key, get_text_llm_name())
+def get_agent(answer_language: AnswerLanguage) -> CompiledStateGraph:
+    """The agent for the request being handled, set to answer in one language."""
+    return _build(get_context().provider_key, get_text_llm_name(), answer_language)
 
 
 @lru_cache(maxsize=32)
-def _build(api_key: str, model: str) -> CompiledStateGraph:
-    """One agent per caller and model. Building it compiles a graph, so it is kept.
+def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> CompiledStateGraph:
+    """One agent per caller, model and language. Building it compiles a graph, so it is kept.
 
-    Neither argument is read: the agent is built from the request context, the
-    same context `get_agent` took these from. They are here to be the cache key
-    -- an agent holds the key and model it was built with, so without them every
-    caller after the first would be handed an agent spending someone else's key.
+    The first two arguments are not read: the agent is built from the request
+    context, the same context `get_agent` took these from. They are here to be
+    the cache key -- an agent holds the key and model it was built with, so
+    without them every caller after the first would be handed an agent spending
+    someone else's key.
 
     The model is part of the key for a second reason: which tools an agent is
     given depends on it, since a hosted tool only runs on its own provider.
+
+    The language is baked into the system prompt rather than asked for in the
+    conversation, so it reads as a standing rule instead of one more thing the
+    model was told once and can drift away from.
     """
     return create_agent(
         model=get_text_llm().chat_model(),
         tools=get_tools(),
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
         name="rag_agent",
     )
 
 
 async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
     """Put the question to the agent, with the passages it leaned on."""
+    answer_language = await language.detect(question)
+    logger.info("Answering in %s", answer_language)
+
     try:
-        result = await get_agent().ainvoke(
+        result = await get_agent(answer_language).ainvoke(
             {"messages": _conversation(question, history)},
             config={"recursion_limit": get_settings().max_agent_steps * 2},
         )

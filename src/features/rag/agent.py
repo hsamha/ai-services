@@ -8,6 +8,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 
 from src.context import get_context
+from src.core.embeddings.factory import get_embedding_model_name
 from src.core.llm.factory import get_text_llm, get_text_llm_name
 from src.features.rag import language
 from src.features.rag.constants import (
@@ -18,7 +19,7 @@ from src.features.rag.constants import (
 )
 from src.features.rag.prompts import SYSTEM_PROMPT
 from src.features.rag.schemas import AgentAnswer, HistoryMessage
-from src.features.rag.tools import get_tools
+from src.features.rag.tools import get_tools, search_knowledge_base
 from src.settings import get_settings
 
 
@@ -90,6 +91,7 @@ async def _run(question: str, history: list[HistoryMessage]) -> AgentAnswer:
 
     messages: list[BaseMessage] = result["messages"]
     _log_tool_calls(messages)
+    _log_models(messages)
 
     text = _text(messages[-1]).strip()
     if not text:
@@ -152,6 +154,27 @@ def _log_tool_calls(messages: list[BaseMessage]) -> None:
                 "  <-  %s returned %d characters", message.name, len(_text(message))
             )
 
+    logger.info("%s", _RULE * 3)
+
+
+def _log_models(messages: list[BaseMessage]) -> None:
+    """Write down which models the answer took.
+
+    The chat model detects the language and runs the agent, so it is always
+    there. The embedding model only turns up when the agent searched the
+    knowledge base -- every other tool reads records by id.
+    """
+    searched = any(
+        call["name"] == search_knowledge_base.name
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    )
+
+    logger.info("%s MODELS %s", _RULE, _RULE)
+    logger.info("  chat       %s", get_text_llm_name())
+    if searched:
+        logger.info("  embedding  %s", get_embedding_model_name())
     logger.info("%s", _RULE * 3)
 
 

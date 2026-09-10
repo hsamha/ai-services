@@ -1,16 +1,18 @@
-# The apps only. They reach the service over HTTP, so nothing from `src` is
-# needed here and this image knows nothing about it.
+# The apps, with the service's code beside them: they call it in process.
+# Built from the repository root -- see ui/docker-compose.yml.
 FROM python:3.13-slim
 
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY ui/requirements.txt ./ui/
+RUN pip install --no-cache-dir -r ui/requirements.txt
 
-COPY . ./ui
+COPY src ./src
+COPY ui ./ui
 
 # `streamlit run` puts the script's own folder on the path, not the workdir,
-# so `ui` would not import without this.
+# so neither `ui` nor `src` would import without this.
 ENV PYTHONPATH=/app
 
 EXPOSE 8501 8502

@@ -1,9 +1,4 @@
-# The Streamlit apps stand on their own -- everything they need is here.
+# The apps run the service's code in process, so they need everything it does.
+-r ../requirements.txt
+
 streamlit==1.63.0
-
-# Config
-pydantic==2.13.5
-pydantic-settings==2.15.0
-
-# Async I/O
-httpx==0.28.1

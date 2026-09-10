@@ -1,5 +1,14 @@
 # AI Services
 
+## Hard rules for Claude
+
+- **Never stage, commit or push.** No `git add`, `git mv`, `git rm`, `git commit`, `git push`, or
+  anything else that touches the index or the remote. Change files in the working tree only; the
+  user does all git operations.
+- **Never run the project.** No `docker compose up`, `uvicorn`, `streamlit run`, or any other
+  command that starts the service, the apps or their databases. Say what to run and let the user
+  run it.
+
 ## Non-negotiable conventions
 
 ### 1. Everything is async

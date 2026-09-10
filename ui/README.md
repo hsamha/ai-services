@@ -1,73 +1,69 @@
 # Streamlit apps
 
-Two small front ends for the RAG service. They are **standalone**: they talk to
-it over HTTP and nothing else, with their own dependencies, their own
-`Dockerfile` and their own compose file. Nothing in `src/` imports them, and
-they import nothing from `src/`.
+Two small front ends for the RAG service. They call the service's code **in
+process** -- the same service functions the HTTP routes call -- so there is no
+API to start first. The routes in `src/` are untouched and still run on their
+own with uvicorn; the apps simply do not go through them.
 
 | App | Port | What it is for |
 |---|---|---|
 | `upload_app.py` | 8501 | Put documents in: upload files, paste text, inspect what was stored, and test-search it. |
 | `chat_app.py` | 8502 | Ask the agent questions over everything in the store. |
 
-`schemas.py` holds the part of the service's contract the apps use. It is a
-deliberate copy rather than an import -- that is what keeps the two sides
-separate. If a route's shape changes, follow it there.
+- `client.py` is the one way the pages reach the service. It sets the request
+  context the middleware would have set, and turns an `HTTPException` into an
+  `APIError`.
+- `runtime.py` holds the single event loop every call runs on, so the service's
+  long-lived async clients (Qdrant, OpenAI) stay usable across reruns.
+- `schemas.py` re-exports the service's own models.
 
-## Running with Docker
+## What still has to be there
 
-Its own stack, brought up on its own:
-
-```bash
-docker compose -f ui/docker-compose.yml up -d --build
-```
-
-- upload app → [localhost:8501](http://localhost:8501)
-- chatbot → [localhost:8502](http://localhost:8502)
-
-The service is expected to be running already. By default the apps look for it
-on the host at `http://localhost:8000`, which is where the service's own compose
-file publishes it -- so the two stacks sit side by side without sharing a
-network. Point them elsewhere with `API_BASE_URL`:
-
-```bash
-API_BASE_URL=http://my-service:8000 docker compose -f ui/docker-compose.yml up -d
-```
-
-| Command | |
-|---|---|
-| `docker compose -f ui/docker-compose.yml up -d --build` | start, after a change to `requirements.txt` or the `Dockerfile` |
-| `docker compose -f ui/docker-compose.yml logs -f chat` | follow one app's logs |
-| `docker compose -f ui/docker-compose.yml down` | stop and remove |
-
-Python changes need no rebuild -- the folder is mounted, so Streamlit reruns on
-save (hit **R** in the app if it does not).
+- **Qdrant**. With Docker, this folder's `docker compose up` starts its own.
+  Without Docker, whatever the root `.env` points at.
+- **The root `.env`**, for `EMBEDDING_API_KEY` and the rest of the service's
+  settings. `API_KEY_HASH` is not used -- nothing is authenticated in process.
 
 ## Running without Docker
 
 ```bash
 pip install -r ui/requirements.txt
 
-streamlit run ui/upload_app.py --server.port 8501
 streamlit run ui/chat_app.py   --server.port 8502
+streamlit run ui/upload_app.py --server.port 8501
 ```
 
-Run them from the repository root, so `ui` imports as a package. Each blocks, so
-give each its own terminal.
+Run them from the repository root: that is where the service reads `.env` and
+`data/` from, and where `ui` and `src` import as packages. If `src` does not
+import, prefix the command with `PYTHONPATH=.`.
+
+## Running with Docker
+
+A stack of its own -- the two apps and their own Qdrant -- fully independent
+of the API's stack in the root `docker-compose.yml`. From `ui/`:
+
+```bash
+docker compose up
+```
+
+- upload app → [localhost:8501](http://localhost:8501)
+- chatbot → [localhost:8502](http://localhost:8502)
+
+This Qdrant keeps its data in `ui/qdrant_storage/`, apart from the API's, and
+publishes no ports, so both stacks can run at the same time. Documents stored
+through the API are not visible here, and the other way round.
+
+The image is built from `ui/Dockerfile` with the repository root as context,
+since it needs `src/` too. `src/`, `ui/` and `data/` are mounted, so Python
+changes need no rebuild. After a change to a requirements file, run
+`docker compose up --build`.
 
 ## Configuration
 
-Read from the environment, or from a `ui/.env` of your own (`cp ui/.env.example
-ui/.env`). The service's `.env` is untouched and unread. Every value can also be
-overridden in the app's sidebar for the session.
+Everything is read from the root `.env` -- the same file the API uses, so there
+is no separate one for the apps. Your own model provider key is typed into the
+chat app's sidebar, and `LLM_MODEL` is the model its picker starts on.
 
-| Variable | Meaning |
-|---|---|
-| `API_BASE_URL` | Where the service is. Defaults to `http://localhost:8000`. |
-| `API_KEY` | Sent as `X-API-Key`. Must match the service's `API_KEY_HASH`. |
-| `PROVIDER_KEY` | Sent as `X-AI-Provider-Key`. Your own model provider key. |
-| `LLM_MODEL` | Sent as `X-LLM-Model`. Empty means the service's default. |
-| `REQUEST_TIMEOUT` | Seconds to wait on a call. Defaults to 120. |
-
-Neither app stores a key. They are held for the life of the browser session and
-sent with each request, as the service expects.
+The rest -- `EMBEDDING_API_KEY`, embedding model, chunking, tools -- is the
+service's configuration. `QDRANT_ENVIRONMENT` decides which Qdrant is used:
+`cloud` goes to your cluster, `local` to the stack's own Qdrant container.

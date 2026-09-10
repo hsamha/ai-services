@@ -1,19 +1,23 @@
-"""Pieces both apps use: the connection sidebar, and the bridge to async calls."""
+"""Pieces both apps use: the settings sidebar, and the bridge to async calls."""
 
-import asyncio
-from collections.abc import Awaitable
 from pathlib import Path
-from typing import TypeVar
 
-import httpx
 import streamlit as st
 
 from ui.client import APIError, RAGClient
+from ui.runtime import run
 from ui.schemas import FileType, ModelsResponse
 from ui.settings import get_ui_settings
 
+__all__ = [
+    "ACCEPTED_EXTENSIONS",
+    "EXTENSION_TYPES",
+    "connection_sidebar",
+    "file_type_for",
+    "model_picker",
+    "run",
+]
 
-T = TypeVar("T")
 
 # What the picker offers, and what the service is told the file is.
 EXTENSION_TYPES: dict[str, FileType] = {
@@ -33,48 +37,37 @@ EXTENSION_TYPES: dict[str, FileType] = {
 ACCEPTED_EXTENSIONS: list[str] = [suffix.lstrip(".") for suffix in EXTENSION_TYPES]
 
 
-def run(coro: Awaitable[T]) -> T:
-    """Drive one async call from Streamlit's synchronous script run.
-
-    Streamlit's own thread has no running loop, so a fresh one per call is both
-    correct and cheap -- the client opens and closes its connection inside it.
-    """
-    return asyncio.run(coro)
-
-
 def file_type_for(filename: str) -> FileType:
     """Guess from the extension. `UNKNOWN` when the name says nothing useful."""
     return EXTENSION_TYPES.get(Path(filename).suffix.lower(), FileType.UNKNOWN)
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def fetch_models(base_url: str, api_key: str, provider_key: str) -> ModelsResponse | None:
+def fetch_models() -> ModelsResponse | None:
     """What the service will accept, or `None` when it cannot be asked.
 
-    Cached against the connection, so the list is fetched once rather than on
-    every rerun. Failure is not an error here: the picker falls back to a plain
-    text box, which is all the header ever needed.
+    Cached, so the list is read once rather than on every rerun. Failure is not
+    an error here: the picker falls back to a plain text box.
     """
-    probe = RAGClient(base_url=base_url, api_key=api_key, provider_key=provider_key)
     try:
-        return run(probe.list_models())
-    except (APIError, httpx.HTTPError):
+        return run(RAGClient(provider_key="").list_models())
+    except APIError:
         return None
 
 
-def model_picker(base_url: str, api_key: str, provider_key: str) -> str:
+def model_picker() -> str:
     """Choose a chat model from what the service offers.
 
     Empty means the service's own default, which is the first option.
     """
-    available = fetch_models(base_url, api_key, provider_key)
+    available = fetch_models()
 
     if available is None:
         return st.text_input(
             "Chat model",
             value=get_ui_settings().llm_model,
             placeholder="empty for the service default",
-            help="The service could not be asked which models it has. Type one, or leave empty.",
+            help="The models could not be listed. Type one, or leave empty.",
         )
 
     default_label = f"{available.default} (service default)"
@@ -84,47 +77,43 @@ def model_picker(base_url: str, api_key: str, provider_key: str) -> str:
     index = labels.index(configured) if configured in labels else 0
 
     chosen = st.selectbox("Chat model", options=labels, index=index)
-    # The default is sent as no header at all, so the service decides.
+    # The default is sent as no model at all, so the service decides.
     return "" if chosen == default_label else chosen
 
 
 def connection_sidebar(with_model: bool = False) -> RAGClient:
-    """Show and collect the connection settings, and hand back a ready client.
+    """Show and collect the caller's settings, and hand back a ready client.
 
     The values start from the environment, so a configured deployment needs no
     typing; anything entered here overrides them for this session only.
-    `with_model` adds the chat-model picker, for the apps that ask the LLM.
+    `with_model` adds the provider key and chat-model picker, for the apps that
+    ask the LLM -- storing and searching embed with the service's own key.
     """
     settings = get_ui_settings()
 
     with st.sidebar:
-        st.subheader("Connection")
-        base_url = st.text_input("Service URL", value=settings.api_base_url)
-        api_key = st.text_input("Service key", value=settings.api_key, type="password")
-        provider_key = st.text_input(
-            "AI provider key",
-            value=settings.provider_key,
-            type="password",
-            help="Your own model provider key. Sent per request, never stored by the service.",
-        )
+        st.subheader("Settings")
 
-        llm_model = model_picker(base_url, api_key, provider_key) if with_model else ""
+        provider_key = ""
+        llm_model = ""
+        if with_model:
+            provider_key = st.text_input(
+                "AI provider key",
+                value=settings.provider_key,
+                type="password",
+                help="Your own model provider key. Used per question, never stored.",
+            )
+            llm_model = model_picker()
 
-        client = RAGClient(
-            base_url=base_url,
-            api_key=api_key,
-            provider_key=provider_key,
-            llm_model=llm_model,
-            timeout=settings.request_timeout,
-        )
+        client = RAGClient(provider_key=provider_key, llm_model=llm_model)
 
-        if st.button("Check service", width="stretch"):
+        if st.button("Check store", width="stretch"):
             if run(client.health()):
-                st.success("Service is up.")
+                st.success("The vector store is up.")
             else:
-                st.error(f"No answer from {base_url}.")
+                st.error("The vector store did not answer. Is Qdrant running?")
 
-        if not api_key or not provider_key:
-            st.warning("Both keys are needed before the service will answer.")
+        if with_model and not provider_key:
+            st.warning("An AI provider key is needed before the assistant will answer.")
 
     return client

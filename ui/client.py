@@ -1,20 +1,30 @@
 """The one way the apps talk to the service.
 
-Streamlit runs a script top to bottom on every interaction, so each call here is
-opened and closed on its own: `asyncio.run(...)` from the page, one client per
-call. The service's own conventions hold -- every call is async, over
-`httpx.AsyncClient`.
+In process: each call goes straight to the feature's service functions, the same
+ones the HTTP routes call, so nothing has to be running but the Streamlit app
+(and the vector store it reads). The routes are untouched and still work on
+their own.
+
+What the HTTP layer would have done around a call is done here instead: the
+request context the middleware fills in is set for the life of the call, and a
+refusal -- an `HTTPException` from deep inside -- comes back as an `APIError`,
+exactly as the pages already expect.
 """
 
-from typing import Any, Self
+import logging
+from collections.abc import Awaitable, Callable
+from io import BytesIO
+from typing import Self, TypeVar
 
-import httpx
-from pydantic import BaseModel, Field
+from fastapi import HTTPException, UploadFile, status
+from pydantic import BaseModel, Field, ValidationError
 
+from src.context import RequestContext, reset_context, set_context
+from src.features.llm import service as llm_service
+from src.features.rag import ingest
+from src.features.rag import service as rag_service
+from src.features.rag.collections import ensure_collections
 from ui.schemas import (
-    LLM_MODEL_HEADER,
-    PROVIDER_KEY_HEADER,
-    SERVICE_KEY_HEADER,
     AskRequest,
     AskResponse,
     ChatRole,
@@ -25,14 +35,15 @@ from ui.schemas import (
     FileType,
     HistoryMessage,
     IngestResponse,
-    IngestTextRequest,
     ModelsResponse,
     SearchRequest,
     SearchResponse,
 )
 from ui.settings import UISettings, get_ui_settings
 
-API_PREFIX = "/api/v1"
+T = TypeVar("T")
+
+logger = logging.getLogger("ui")
 
 
 class APIError(Exception):
@@ -45,7 +56,7 @@ class APIError(Exception):
 
 
 class UploadFilePayload(BaseModel):
-    """A file picked in the browser, ready to be posted."""
+    """A file picked in the browser, ready to be stored."""
 
     filename: str
     content: bytes
@@ -53,67 +64,51 @@ class UploadFilePayload(BaseModel):
 
 
 class RAGClient(BaseModel):
-    """Typed calls against the rag feature's routes."""
+    """Typed calls into the rag feature's services."""
 
-    base_url: str
-    api_key: str
     provider_key: str
     llm_model: str = ""
-    timeout: float = 120.0
 
     @classmethod
     def from_settings(cls, settings: UISettings | None = None) -> Self:
         resolved = settings or get_ui_settings()
-        return cls(
-            base_url=resolved.api_base_url,
-            api_key=resolved.api_key,
-            provider_key=resolved.provider_key,
-            llm_model=resolved.llm_model,
-            timeout=resolved.request_timeout,
-        )
+        return cls(provider_key=resolved.provider_key, llm_model=resolved.llm_model)
 
-    def _headers(self) -> dict[str, str]:
-        headers = {
-            SERVICE_KEY_HEADER: self.api_key,
-            PROVIDER_KEY_HEADER: self.provider_key,
-        }
-        if self.llm_model:
-            headers[LLM_MODEL_HEADER] = self.llm_model
-        return headers
+    async def _call(self, work: Callable[[], Awaitable[T]]) -> T:
+        """One call, inside this caller's context. Raises `APIError` on refusal.
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        json: dict[str, Any] | None = None,
-        params: dict[str, str | int] | None = None,
-        data: dict[str, str] | None = None,
-        files: dict[str, tuple[str, bytes, str]] | None = None,
-    ) -> dict[str, Any]:
-        """One call, with the caller's headers on it. Raises `APIError` on refusal."""
-        url = f"{self.base_url.rstrip('/')}{API_PREFIX}{path}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.request(
-                method,
-                url,
-                headers=self._headers(),
-                json=json,
-                params=params,
-                data=data,
-                files=files,
+        `work` is a thunk rather than a coroutine so that building the request
+        models happens inside the `try` too -- a value the schema rejects is a
+        422 here, as it would be over HTTP, not a crash of the page.
+        """
+        token = set_context(
+            RequestContext(
+                # No service key in process: there is no one to authenticate.
+                api_key="",
+                provider_key=self.provider_key,
+                llm_model=self.llm_model or None,
             )
-        if response.is_error:
-            raise APIError(response.status_code, _detail(response))
-        return response.json()
+        )
+        try:
+            return await work()
+        except HTTPException as error:
+            raise APIError(error.status_code, str(error.detail)) from error
+        except ValidationError as error:
+            raise APIError(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+        except Exception as error:
+            # The same last resort as the service's error middleware.
+            logger.exception("In-process call failed")
+            raise APIError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR, f"{type(error).__name__}: {error}"
+            ) from error
+        finally:
+            reset_context(token)
 
     # ------------------------------------------------------------- uploading
 
     async def ingest_text(self, document_id: str, title: str, text: str) -> IngestResponse:
         """Store text typed straight into the page."""
-        body = IngestTextRequest(document_id=document_id, title=title, text=text)
-        payload = await self._request("POST", "/rag/documents", json=body.model_dump(mode="json"))
-        return IngestResponse.model_validate(payload)
+        return await self._call(lambda: ingest.ingest_text(document_id, title, text))
 
     async def upload_document(
         self,
@@ -122,43 +117,28 @@ class RAGClient(BaseModel):
         upload: UploadFilePayload,
         title: str | None = None,
     ) -> IngestResponse:
-        """Store a picked file, as multipart."""
-        form: dict[str, str] = {"document_id": document_id, "source_type": source_type.value}
-        if title:
-            form["title"] = title
-        payload = await self._request(
-            "POST",
-            "/rag/documents/upload",
-            data=form,
-            files={"file": (upload.filename, upload.content, upload.content_type)},
-        )
-        return IngestResponse.model_validate(payload)
+        """Store a picked file, handed over as the upload a route would receive."""
+        file = UploadFile(file=BytesIO(upload.content), filename=upload.filename)
+        return await self._call(lambda: ingest.ingest_file(document_id, title, source_type, file))
 
     # -------------------------------------------------------------- reading
 
     async def list_documents(self) -> DocumentsResponse:
         """Every document in the store, newest first."""
-        payload = await self._request("GET", "/rag/documents")
-        return DocumentsResponse.model_validate(payload)
+        return await self._call(rag_service.list_documents)
 
     async def get_document(self, document_id: str) -> DocumentResponse:
-        payload = await self._request("GET", f"/rag/documents/{document_id}")
-        return DocumentResponse.model_validate(payload)
+        return await self._call(lambda: rag_service.get_document(document_id))
 
     async def get_document_chunks(self, document_id: str) -> ChunksResponse:
-        payload = await self._request("GET", f"/rag/documents/{document_id}/chunks")
-        return ChunksResponse.model_validate(payload)
+        return await self._call(lambda: rag_service.get_document_chunks(document_id))
 
     async def delete_document(self, document_id: str) -> DeleteDocumentResponse:
         """Remove a document and every chunk of it."""
-        payload = await self._request("DELETE", f"/rag/documents/{document_id}")
-        return DeleteDocumentResponse.model_validate(payload)
+        return await self._call(lambda: rag_service.delete_document(document_id))
 
     async def expand_chunk(self, chunk_id: str, window: int = 1) -> ChunksResponse:
-        payload = await self._request(
-            "GET", f"/rag/chunks/{chunk_id}/expand", params={"window": window}
-        )
-        return ChunksResponse.model_validate(payload)
+        return await self._call(lambda: rag_service.expand_chunk(chunk_id, window))
 
     # ------------------------------------------------------------- asking
 
@@ -168,33 +148,35 @@ class RAGClient(BaseModel):
         document_id: str | None = None,
         score_threshold: float | None = None,
     ) -> SearchResponse:
-        body = SearchRequest(
-            query=query, document_id=document_id, score_threshold=score_threshold
+        return await self._call(
+            lambda: rag_service.search(
+                SearchRequest(
+                    query=query, document_id=document_id, score_threshold=score_threshold
+                )
+            )
         )
-        payload = await self._request("POST", "/rag/search", json=body.model_dump(mode="json"))
-        return SearchResponse.model_validate(payload)
 
     async def ask(self, question: str, history: list[HistoryMessage] | None = None) -> AskResponse:
-        body = AskRequest(question=question, history=history or [])
-        payload = await self._request("POST", "/rag/ask", json=body.model_dump(mode="json"))
-        return AskResponse.model_validate(payload)
+        # Asking spends the caller's own provider key, so it cannot go without one.
+        if not self.provider_key:
+            raise APIError(status.HTTP_401_UNAUTHORIZED, "An AI provider key is needed to ask.")
+        return await self._call(
+            lambda: rag_service.ask(AskRequest(question=question, history=history or []))
+        )
 
     async def list_models(self) -> ModelsResponse:
         """Every chat model the service accepts, and the one it defaults to."""
-        payload = await self._request("GET", "/llm/models")
-        return ModelsResponse.model_validate(payload)
+        return await self._call(llm_service.list_models)
 
     # --------------------------------------------------------------- health
 
     async def health(self) -> bool:
-        """Whether the service answers at all. Never raises."""
-        url = f"{self.base_url.rstrip('/')}/health"
+        """Whether the vector store answers and holds its collections. Never raises."""
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(url)
-        except httpx.HTTPError:
+            await self._call(ensure_collections)
+        except APIError:
             return False
-        return response.status_code == httpx.codes.OK
+        return True
 
 
 class ChatTurn(BaseModel):
@@ -217,14 +199,3 @@ class ChatState(BaseModel):
 
     def history(self) -> list[HistoryMessage]:
         return [turn.to_history() for turn in self.turns]
-
-
-def _detail(response: httpx.Response) -> str:
-    """The service's own message, or the raw body when it sent something else."""
-    try:
-        payload = response.json()
-    except ValueError:
-        return response.text or response.reason_phrase
-    if isinstance(payload, dict) and "detail" in payload:
-        return str(payload["detail"])
-    return response.text

@@ -1,0 +1,11 @@
+# Used for ui/Dockerfile, whose build context is the repository root.
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.env
+.git/
+**/qdrant_storage/
+server/
+deploy/
+data/

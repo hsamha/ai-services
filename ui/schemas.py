@@ -1,159 +1,47 @@
-"""The service's contract, as this app needs it.
+"""The service's contract, as the apps use it.
 
-Deliberately a copy, not an import: the apps stand on their own and talk to the
-service over HTTP only, so nothing here reaches into the service's code. What
-is mirrored is only what the two apps actually read or send. If a route's shape
-changes, this file is the one place to follow it.
+Imported straight from the service, not copied: the apps call its code in
+process, so its own models are the ones that go in and come out. One place
+for the pages to import them from.
 """
 
-from enum import StrEnum
+from src.core.tools.enums import FileType
+from src.core.types import SearchHit
+from src.features.llm.schemas import ModelInfo, ModelsResponse
+from src.features.rag.constants import ChatRole
+from src.features.rag.schemas import (
+    AskRequest,
+    AskResponse,
+    ChunkResponse,
+    ChunksResponse,
+    DeleteDocumentResponse,
+    DocumentMetadata,
+    DocumentResponse,
+    DocumentsResponse,
+    HistoryMessage,
+    IngestResponse,
+    IngestTextRequest,
+    SearchRequest,
+    SearchResponse,
+)
 
-from pydantic import BaseModel, Field
-
-# What the service sends with each request, and what it calls them.
-SERVICE_KEY_HEADER = "X-API-Key"
-PROVIDER_KEY_HEADER = "X-AI-Provider-Key"
-LLM_MODEL_HEADER = "X-LLM-Model"
-
-MetadataValue = str | int | float | bool
-Metadata = dict[str, MetadataValue]
-
-
-class FileType(StrEnum):
-    """What kind of document a file holds. Decides which loader reads it."""
-
-    TEXT = "text"
-    MARKDOWN = "markdown"
-    HTML = "html"
-
-    PDF = "pdf"
-    DOCX = "docx"
-    PPTX = "pptx"
-    XLSX = "xlsx"
-
-    CSV = "csv"
-    JSON = "json"
-
-    UNKNOWN = "unknown"
-
-
-class ChatRole(StrEnum):
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class SearchHit(BaseModel):
-    text: str
-    score: float
-    metadata: Metadata = Field(default_factory=dict)
-
-
-# ------------------------------------------------------------------- requests
-
-
-class IngestTextRequest(BaseModel):
-    document_id: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    text: str = Field(min_length=1)
-
-
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=255)
-    document_id: str | None = None
-    score_threshold: float | None = None
-
-
-class HistoryMessage(BaseModel):
-    role: ChatRole
-    content: str = Field(min_length=1)
-
-
-class AskRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=255)
-    history: list[HistoryMessage] = Field(default_factory=list)
-
-
-# ------------------------------------------------------------------ responses
-
-
-class DocumentMetadata(BaseModel):
-    """What the service knows about a document, beside its text."""
-
-    id: str
-    document_id: str
-    title: str
-    source_type: FileType = FileType.TEXT
-    content_hash: str = ""
-    char_count: int
-    token_count: int
-    chunk_count: int = 0
-    created_at: str
-
-
-class IngestResponse(BaseModel):
-    id: str
-    document_id: str
-    title: str
-    source_type: FileType
-    content_hash: str = ""
-    char_count: int
-    token_count: int
-    chunk_count: int
-
-
-class DocumentsResponse(BaseModel):
-    """Every document the store holds, newest first."""
-
-    documents: list[DocumentMetadata] = Field(default_factory=list)
-
-
-class DeleteDocumentResponse(BaseModel):
-    """What was removed, and whether anything was."""
-
-    document_id: str
-    deleted: bool
-
-
-class DocumentResponse(BaseModel):
-    metadata: DocumentMetadata
-    text: str | None = None
-    message: str | None = None
-
-
-class ChunkResponse(BaseModel):
-    id: str
-    document_id: str
-    index: int
-    text: str
-
-
-class ChunksResponse(BaseModel):
-    document_id: str
-    chunks: list[ChunkResponse] = Field(default_factory=list)
-
-
-class SearchResponse(BaseModel):
-    query: str
-    hits: list[SearchHit] = Field(default_factory=list)
-
-
-class AskResponse(BaseModel):
-    question: str
-    answer: str
-    model: str
-    # Every message of the run, as JSON.
-    transcript: str = "[]"
-
-
-class ModelInfo(BaseModel):
-    """A model the service will accept in the `X-LLM-Model` header."""
-
-    name: str
-    provider: str
-
-
-class ModelsResponse(BaseModel):
-    """Every model that can be asked for, and the one used when none is."""
-
-    default: str
-    models: list[ModelInfo] = Field(default_factory=list)
+__all__ = [
+    "AskRequest",
+    "AskResponse",
+    "ChatRole",
+    "ChunkResponse",
+    "ChunksResponse",
+    "DeleteDocumentResponse",
+    "DocumentMetadata",
+    "DocumentResponse",
+    "DocumentsResponse",
+    "FileType",
+    "HistoryMessage",
+    "IngestResponse",
+    "IngestTextRequest",
+    "ModelInfo",
+    "ModelsResponse",
+    "SearchHit",
+    "SearchRequest",
+    "SearchResponse",
+]

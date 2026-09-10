@@ -1,46 +1,52 @@
-# The apps on their own. The service is expected to be running already, wherever
-# `API_BASE_URL` points -- by default the host, so this works next to the
-# service's own compose file without the two sharing anything.
+# The apps on their own, with their own Qdrant. Nothing here needs the API or
+# the root stack, and nothing in the root stack needs this. From `ui/`:
 #
-#   docker compose -f ui/docker-compose.yml up -d --build
+#   docker compose up
+#
+# - upload  → localhost:8501
+# - chat    → localhost:8502
+
+x-app: &app
+  build:
+    # The repository root, since the apps run the service's code in process.
+    context: ..
+    dockerfile: ui/Dockerfile
+  volumes:
+    # Mounted, so an edit reruns without a rebuild.
+    - ../src:/app/src
+    - .:/app/ui
+    - ../data:/app/data:ro
+  # The root .env: the same configuration the API reads.
+  env_file: ../.env
+  environment:
+    QDRANT_URL: http://qdrant:6333
+  depends_on:
+    - qdrant
 
 services:
+  # Its own database, with its own data. No ports published, so it never
+  # collides with the root stack's Qdrant on 6333.
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+
   upload:
-    build: .
+    <<: *app
     command: >
       streamlit run ui/upload_app.py
       --server.port 8501
       --server.address 0.0.0.0
       --server.headless true
-    volumes:
-      # So an edit reruns without a rebuild.
-      - .:/app/ui
     ports:
       - "8501:8501"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:8000}
-    extra_hosts:
-      # Lets the container reach a service running on the machine itself.
-      - "host.docker.internal:host-gateway"
 
   chat:
-    build: .
+    <<: *app
     command: >
       streamlit run ui/chat_app.py
       --server.port 8502
       --server.address 0.0.0.0
       --server.headless true
-    volumes:
-      - .:/app/ui
     ports:
       - "8502:8502"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:8000}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"

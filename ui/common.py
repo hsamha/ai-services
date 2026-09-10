@@ -4,6 +4,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.core.llm.enums import LLMProvider
 from src.settings import get_settings
 from ui.client import APIError, RAGClient
 from ui.runtime import run
@@ -71,8 +72,12 @@ def model_picker() -> str:
             help="The models could not be listed. Type one, or leave empty.",
         )
 
+    models = available.models
+    if get_ui_settings().openai_models_only:
+        models = [model for model in models if model.provider is LLMProvider.OPENAI]
+
     default_label = f"{available.default} (service default)"
-    labels = [default_label, *[model.name for model in available.models]]
+    labels = [default_label, *[model.name for model in models]]
 
     configured = get_ui_settings().llm_model
     index = labels.index(configured) if configured in labels else 0
@@ -105,6 +110,7 @@ def connection_sidebar(with_model: bool = False) -> RAGClient:
                 type="password",
                 help="Your own model provider key. Used per call, never stored.",
             )
+            st.caption("Your key is used only for your own questions, and never stored.")
         llm_model = model_picker() if with_model else ""
 
         client = RAGClient(provider_key=provider_key, llm_model=llm_model)

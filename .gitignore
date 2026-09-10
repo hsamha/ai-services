@@ -6,3 +6,5 @@ venv/
 .ruff_cache/
 .pytest_cache/
 qdrant_storage/
+.streamlit/secrets.toml
+server/

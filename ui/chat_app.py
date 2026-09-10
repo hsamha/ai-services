@@ -10,6 +10,7 @@ import streamlit as st
 from ui.schemas import ChatRole
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, run
+from ui.settings import get_ui_settings
 
 st.set_page_config(page_title="Jordanian Constitution Assistant", page_icon="📚", layout="centered")
 
@@ -99,7 +100,12 @@ def chat_state() -> ChatState:
 
 
 def showing_transcript() -> bool:
-    """Whether the sidebar toggle is on. Read on every rerun, so it survives one."""
+    """Whether the sidebar toggle is on. Read on every rerun, so it survives one.
+
+    Always off where the deployment does not offer the toggle at all.
+    """
+    if not get_ui_settings().show_transcript:
+        return False
     return bool(st.session_state.get(TRANSCRIPT_KEY, False))
 
 
@@ -194,7 +200,8 @@ def main() -> None:
         if st.button("Clear chat", width="stretch", disabled=busy):
             st.session_state[CHAT_KEY] = ChatState()
             st.rerun()
-        st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
+        if get_ui_settings().show_transcript:
+            st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
 
     render_history(state)
 

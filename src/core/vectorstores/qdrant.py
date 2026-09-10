@@ -6,6 +6,7 @@ from qdrant_client.http import models
 
 from src.core.embeddings.base import Embedder
 from src.core.types import Chunk, Metadata, SearchHit
+from src.core.vectorstores.enums import QdrantEnvironment
 from src.settings import get_settings
 
 # The chunk's text and its metadata sit side by side in the payload, so a filter
@@ -222,11 +223,26 @@ def build_filter(filters: Metadata | None) -> models.Filter | None:
 _client: AsyncQdrantClient | None = None
 
 
+def _target() -> tuple[str, str | None]:
+    settings = get_settings()
+
+    if settings.qdrant_environment is QdrantEnvironment.LOCAL:
+        return settings.qdrant_url, None
+
+    if not settings.qdrant_cloud_url or not settings.qdrant_api_key:
+        raise RuntimeError(
+            "QDRANT_ENVIRONMENT is cloud, so QDRANT_CLOUD_URL and "
+            "QDRANT_API_KEY must both be set."
+        )
+    return settings.qdrant_cloud_url, settings.qdrant_api_key
+
+
 async def connect() -> None:
     """Open the connection. Called once, when the service starts."""
     global _client
     if _client is None:
-        _client = AsyncQdrantClient(url=get_settings().qdrant_url)
+        url, api_key = _target()
+        _client = AsyncQdrantClient(url=url, api_key=api_key)
 
 
 async def disconnect() -> None:

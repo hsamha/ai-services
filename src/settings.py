@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.core.vectorstores.enums import VectorStoreProvider
+from src.core.vectorstores.enums import QdrantEnvironment, VectorStoreProvider
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     vector_store: VectorStoreProvider = VectorStoreProvider.QDRANT
 
+    qdrant_environment: QdrantEnvironment = QdrantEnvironment.LOCAL
+
     qdrant_url: str = "http://localhost:6333"
+
+    qdrant_cloud_url: str = ""
+    qdrant_api_key: str = ""
 
     chunk_size: int = 300
     chunk_overlap: int = 50

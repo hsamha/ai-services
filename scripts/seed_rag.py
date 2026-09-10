@@ -41,9 +41,10 @@ from typing import Literal
 # so it cannot hand the key back -- it has to be given here.
 API_KEY_VAR = "API_KEY"
 
-# Ingest embeds with the service's own EMBEDDING_API_KEY, never with the
-# caller's, but the middleware still demands this header before the handler
-# runs. So any non-empty value gets an upload through.
+# The middleware demands this header before the handler runs. When the service
+# has its own EMBEDDING_API_KEY, ingest embeds with that and any non-empty value
+# gets an upload through. When it does not, ingest embeds with this header's
+# key instead -- so this placeholder fails, and a real OpenAI key must be sent.
 PROVIDER_KEY_PLACEHOLDER = "not-used-for-ingest"
 
 DEFAULT_BASE_URL = "http://localhost:8000"

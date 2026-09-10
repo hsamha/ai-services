@@ -1,5 +1,3 @@
-from functools import lru_cache
-
 from src.core.embeddings.factory import get_embedding_model
 from src.core.vectorstores import qdrant
 from src.core.vectorstores.base import VectorStore, VectorStoreBackend
@@ -30,13 +28,18 @@ async def open_connections() -> None:
 async def close_connections() -> None:
     """Disconnect. Called once, when the service stops."""
     await _backend().disconnect()
-    get_store.cache_clear()
 
 
 async def ensure_collection(name: str, dimensions: int) -> bool:
     return await _backend().ensure_collection(name, dimensions)
 
 
-@lru_cache(maxsize=1)
 def get_store() -> VectorStore:
+    """A store for the current caller.
+
+    Not cached: the embedder inside may be on the caller's own key, so a store
+    kept from one call would embed the next caller's text on someone else's.
+    Building one is cheap -- the connection is shared, and embedders are cached
+    per key in their factory.
+    """
     return _backend().build(get_embedding_model())

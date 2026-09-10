@@ -21,7 +21,8 @@ own with uvicorn; the apps simply do not go through them.
 
 - **Qdrant**. With Docker, this folder's `docker compose up` starts its own.
   Without Docker, whatever the root `.env` points at.
-- **The root `.env`**, for `EMBEDDING_API_KEY` and the rest of the service's
+- **The root `.env`**, for `EMBEDDING_API_KEY` (optional -- left empty, the key
+  typed into the sidebar embeds too, so the upload app asks for it) and the rest of the service's
   settings. `API_KEY_HASH` is not used -- nothing is authenticated in process.
 
 ## Running without Docker

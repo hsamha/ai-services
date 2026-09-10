@@ -3,6 +3,7 @@ from functools import lru_cache
 
 from fastapi import HTTPException, status
 
+from src.context import get_context
 from src.core.embeddings import openai
 from src.core.embeddings.base import Embedder
 from src.core.embeddings.constants import PROVIDER_BY_MODEL
@@ -21,13 +22,22 @@ def get_embedding_model_name() -> str:
 
 def get_embedding_model() -> Embedder:
     settings = get_settings()
-    if not settings.embedding_api_key:
+    return _build(settings.embedding_api_key or _caller_key(), settings.embedding_model)
+
+
+def _caller_key() -> str:
+    try:
+        key = get_context().provider_key
+    except RuntimeError:
+        # Outside a request there is no caller to borrow a key from.
+        key = ""
+
+    if not key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No EMBEDDING_API_KEY configured.",
+            detail="No EMBEDDING_API_KEY configured, and no provider key sent to embed with.",
         )
-
-    return _build(settings.embedding_api_key, settings.embedding_model)
+    return key
 
 
 @lru_cache(maxsize=32)

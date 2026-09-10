@@ -4,6 +4,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.settings import get_settings
 from ui.client import APIError, RAGClient
 from ui.runtime import run
 from ui.schemas import FileType, ModelsResponse
@@ -86,24 +87,25 @@ def connection_sidebar(with_model: bool = False) -> RAGClient:
 
     The values start from the environment, so a configured deployment needs no
     typing; anything entered here overrides them for this session only.
-    `with_model` adds the provider key and chat-model picker, for the apps that
-    ask the LLM -- storing and searching embed with the service's own key.
+    `with_model` adds the chat-model picker, for the apps that ask the LLM. The
+    provider key is asked for there too, and anywhere else it is needed: with no
+    `EMBEDDING_API_KEY` configured, storing and searching embed with it as well.
     """
     settings = get_ui_settings()
+    needs_key = with_model or not get_settings().embedding_api_key
 
     with st.sidebar:
         st.subheader("Settings")
 
         provider_key = ""
-        llm_model = ""
-        if with_model:
+        if needs_key:
             provider_key = st.text_input(
                 "AI provider key",
                 value=settings.provider_key,
                 type="password",
-                help="Your own model provider key. Used per question, never stored.",
+                help="Your own model provider key. Used per call, never stored.",
             )
-            llm_model = model_picker()
+        llm_model = model_picker() if with_model else ""
 
         client = RAGClient(provider_key=provider_key, llm_model=llm_model)
 
@@ -113,7 +115,7 @@ def connection_sidebar(with_model: bool = False) -> RAGClient:
             else:
                 st.error("The vector store did not answer. Is Qdrant running?")
 
-        if with_model and not provider_key:
-            st.warning("An AI provider key is needed before the assistant will answer.")
+        if needs_key and not provider_key:
+            st.warning("An AI provider key is needed before this app will work.")
 
     return client

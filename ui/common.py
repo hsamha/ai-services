@@ -7,7 +7,7 @@ import streamlit as st
 from src.core.llm.enums import LLMProvider
 from src.settings import get_settings
 from ui.client import APIError, RAGClient
-from ui.runtime import run
+from ui.runtime import run, submit
 from ui.schemas import FileType, ModelsResponse
 from ui.settings import get_ui_settings
 
@@ -18,6 +18,7 @@ __all__ = [
     "file_type_for",
     "model_picker",
     "run",
+    "submit",
 ]
 
 

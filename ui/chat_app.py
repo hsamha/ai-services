@@ -4,12 +4,14 @@ Run with:  streamlit run ui/chat_app.py
 """
 
 import json
+import time
+from concurrent.futures import Future, TimeoutError as FutureTimeout
 
 import streamlit as st
 
-from ui.schemas import ChatRole
+from ui.schemas import AskResponse, ChatRole
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
-from ui.common import connection_sidebar, run
+from ui.common import connection_sidebar, submit
 from ui.settings import get_ui_settings
 
 st.set_page_config(page_title="Jordanian Constitution Assistant", page_icon="📚", layout="centered")
@@ -20,6 +22,15 @@ BUSY_KEY = "answering"
 PENDING_KEY = "pending_question"
 
 DISCLAIMER = "AI can make mistakes — double-check important answers."
+
+# Said in the chat rather than shown as an error banner: with no key there is
+# nothing to ask, and the answer to "why did nothing happen" belongs in the
+# conversation, next to the question that went unanswered.
+NO_KEY_REPLY = (
+    "I need an AI provider key before I can answer. Open **Settings** in the "
+    "sidebar, paste your own model provider key, and ask again — it is used "
+    "only for your own questions, and never stored."
+)
 
 TITLE = "📚 Jordanian Constitution Assistant"
 
@@ -89,7 +100,53 @@ h1.app-title,
 </style>
 """
 
-AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "🤖"}
+AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "✨"}
+
+# What the status line says while an answer is out, in the order the agent
+# roughly works through: it reads the question, searches, reads what came back,
+# then writes. The service reports nothing mid-run, so these are paced by the
+# clock rather than driven by it -- the last one stays up until the answer
+# lands, however long that takes.
+THINKING_STEPS: tuple[str, ...] = (
+    "Thinking…",
+    "Searching…",
+    "Reading…",
+    "Writing…",
+)
+
+# How long each step holds before the next one, and how often the page looks
+# to see whether the answer has arrived.
+STEP_SECONDS = 3.0
+POLL_SECONDS = 0.2
+
+
+def await_answer(pending: Future[AskResponse]) -> AskResponse:
+    """Wait for the call, walking the status line along while it is out.
+
+    Blocking here is the page's own thread, not the service's loop: the call is
+    already running on the shared loop, and this only watches it.
+    """
+    # Held in a placeholder so the whole status element can be taken off the
+    # page afterwards, frame and all, rather than just emptied of its contents.
+    slot = st.empty()
+    status = slot.status(THINKING_STEPS[0], expanded=False)
+    started = time.monotonic()
+    showing = 0
+    try:
+        while True:
+            try:
+                return pending.result(timeout=POLL_SECONDS)
+            except FutureTimeout:
+                step = min(
+                    int((time.monotonic() - started) / STEP_SECONDS),
+                    len(THINKING_STEPS) - 1,
+                )
+                if step != showing:
+                    showing = step
+                    status.update(label=THINKING_STEPS[step])
+    finally:
+        # Gone either way: the answer replaces it, and an error is shown instead.
+        slot.empty()
 
 
 def chat_state() -> ChatState:
@@ -155,15 +212,22 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
     with st.chat_message(ChatRole.USER.value, avatar=AVATARS[ChatRole.USER]):
         st.markdown(question)
 
+    # No key, no call: the assistant says so itself, and the question stays in
+    # the history so it is still there to ask again once a key is entered.
+    if not client.provider_key:
+        with st.chat_message(ChatRole.ASSISTANT.value, avatar=AVATARS[ChatRole.ASSISTANT]):
+            st.markdown(NO_KEY_REPLY)
+        state.turns.append(ChatTurn(role=ChatRole.ASSISTANT, content=NO_KEY_REPLY))
+        return
+
     with st.chat_message(ChatRole.ASSISTANT.value, avatar=AVATARS[ChatRole.ASSISTANT]):
-        with st.spinner("Looking through the documents…"):
-            try:
-                response = run(client.ask(question, history))
-            except APIError as error:
-                st.error(error.detail)
-                # Drop the question again, so a retry is not sent twice.
-                state.turns.pop()
-                return
+        try:
+            response = await_answer(submit(client.ask(question, history)))
+        except APIError as error:
+            st.error(error.detail)
+            # Drop the question again, so a retry is not sent twice.
+            state.turns.pop()
+            return
         st.markdown(response.answer)
         st.caption(response.model)
         if showing_transcript():

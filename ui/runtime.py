@@ -16,6 +16,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Coroutine
+from concurrent.futures import Future
 from typing import TypeVar
 
 from src.core.vectorstores.registry import open_connections
@@ -46,6 +47,15 @@ def _get_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
+def submit(coro: Coroutine[object, object, T]) -> Future[T]:
+    """Hand one coroutine to the shared loop, without waiting for it.
+
+    For a page that wants to do something while the call is out -- keep a
+    status line moving, say. The caller waits on the future itself.
+    """
+    return asyncio.run_coroutine_threadsafe(coro, _get_loop())
+
+
 def run(coro: Coroutine[object, object, T]) -> T:
     """Run one coroutine on the shared loop, and block the page until it settles."""
-    return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
+    return submit(coro).result()

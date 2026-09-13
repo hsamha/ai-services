@@ -1,11 +1,20 @@
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import (
+    ModelRequest,
+    ModelResponse,
+    ToolCallRequest,
+    wrap_model_call,
+    wrap_tool_call,
+)
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
 from src.context import get_context
 from src.core.embeddings.factory import get_embedding_model_name
@@ -17,7 +26,7 @@ from src.features.rag.constants import (
     AnswerLanguage,
     ChatRole,
 )
-from src.features.rag.prompts import SYSTEM_PROMPT
+from src.features.rag.prompts import OUT_OF_STEPS_PROMPT, SYSTEM_PROMPT
 from src.features.rag.schemas import AgentAnswer, HistoryMessage
 from src.features.rag.tools import get_tools, search_knowledge_base
 from src.settings import get_settings
@@ -53,8 +62,47 @@ def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> Compile
         model=get_text_llm().chat_model(),
         tools=get_tools(),
         system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
+        middleware=[_answer_when_out_of_steps, _log_tool_call],
         name="rag_agent",
     )
+
+
+@wrap_model_call
+async def _answer_when_out_of_steps(
+    request: ModelRequest,
+    handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
+) -> ModelResponse:
+
+    rounds = sum(
+        1 for message in request.messages if isinstance(message, AIMessage) and message.tool_calls
+    )
+    if rounds < get_settings().max_agent_steps - 1:
+        return await handler(request)
+
+    logger.warning("Search budget spent after %d tool rounds. Answering from what was found.", rounds)
+
+    return await handler(
+        request.override(
+            messages=[*request.messages, HumanMessage(content=OUT_OF_STEPS_PROMPT)],
+            tool_choice="none",
+        )
+    )
+
+
+@wrap_tool_call
+async def _log_tool_call(
+    request: ToolCallRequest,
+    handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+) -> ToolMessage | Command:
+    call = request.tool_call
+    logger.info("TOOL  ->  %s(%s)", call["name"], json.dumps(call["args"], ensure_ascii=False))
+
+    result = await handler(request)
+
+    if isinstance(result, ToolMessage):
+        logger.info("TOOL  <-  %s returned %d characters", call["name"], len(_text(result)))
+
+    return result
 
 
 async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:

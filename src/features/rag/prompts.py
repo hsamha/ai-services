@@ -92,6 +92,15 @@ gap from your own knowledge.
 """
 
 
+OUT_OF_STEPS_PROMPT = """\
+No more searching -- the search budget for this question is spent. Answer now,
+using only the passages the tools already returned in this conversation, and
+following every rule you were given. If they cover the question only in part,
+answer that part and say what is not covered. If they hold nothing relevant,
+say the knowledge base did not turn it up.\
+"""
+
+
 TRANSLATE_PROMPT = """\
 Translate the text below into {target_language}.
 

@@ -218,10 +218,11 @@ async def _run(
     threshold = get_settings().rag_min_confidence
     found = confidence >= threshold
     logger.info(
-        "  rag       %s (confidence %.2f, threshold %.2f)",
+        "  rag       %s (confidence %.2f, threshold %.2f, jordanian law %s)",
         "found" if found else "not found",
         confidence,
         threshold,
+        "yes" if reply.jordanian_law else "no",
     )
 
     rag_answer = AgentAnswer(
@@ -231,7 +232,8 @@ async def _run(
         confidence=confidence,
     )
 
-    if found or not web_search:
+    # The web only ever answers Jordanian law questions.
+    if found or not web_search or not reply.jordanian_law:
         return rag_answer
 
     return await _answer_from_web(question, history, answer_language, messages, rag_answer)

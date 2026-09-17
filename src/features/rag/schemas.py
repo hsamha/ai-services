@@ -246,6 +246,13 @@ class AgentReply(BaseModel):
     """The shape the agent must reply in. Its field descriptions are read by the model."""
 
     response: str = Field(description="The reply to show the user, in Markdown.")
+    jordanian_law: bool = Field(
+        description=(
+            "True only if the user's last message asks about Jordanian law, or is a "
+            "short follow-up ('how?', 'why?') to a Jordanian law question. A new, "
+            "unrelated topic is false even when earlier turns were about law."
+        )
+    )
     confidence: float = Field(
         description="0.0-1.0: how fully the response answers the question from the passages."
     )

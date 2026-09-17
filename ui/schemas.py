@@ -8,7 +8,7 @@ for the pages to import them from.
 from src.core.tools.enums import FileType
 from src.core.types import SearchHit
 from src.features.llm.schemas import ModelInfo, ModelsResponse
-from src.features.rag.constants import ChatRole
+from src.features.rag.constants import AnswerStatus, ChatRole
 from src.features.rag.schemas import (
     AskRequest,
     AskResponse,
@@ -26,6 +26,7 @@ from src.features.rag.schemas import (
 )
 
 __all__ = [
+    "AnswerStatus",
     "AskRequest",
     "AskResponse",
     "ChatRole",

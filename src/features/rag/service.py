@@ -146,4 +146,5 @@ async def ask(body: AskRequest) -> AskResponse:
         answer=settled.text,
         model=get_text_llm_name(),
         transcript=settled.transcript,
+        status=settled.status,
     )

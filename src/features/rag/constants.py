@@ -19,6 +19,13 @@ class AnswerLanguage(StrEnum):
 
 DEFAULT_LANGUAGE = AnswerLanguage.ARABIC
 
+
+class AnswerStatus(StrEnum):
+    """How a reply turned out."""
+
+    ANSWERED = "answered"
+    NOT_FOUND = "not_found"
+
 # What a caller reads when a run does not finish. Fixed text, and in both
 # languages: whatever failed may be the very thing that decides which language
 # to answer in, so this cannot depend on it. The reason goes to the log, where

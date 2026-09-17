@@ -24,10 +24,11 @@ from src.features.rag.constants import (
     TOO_MANY_STEPS_ANSWER,
     TROUBLE_ANSWER,
     AnswerLanguage,
+    AnswerStatus,
     ChatRole,
 )
 from src.features.rag.prompts import OUT_OF_STEPS_PROMPT, SYSTEM_PROMPT
-from src.features.rag.schemas import AgentAnswer, HistoryMessage
+from src.features.rag.schemas import AgentAnswer, AgentReply, HistoryMessage
 from src.features.rag.tools import get_tools, search_knowledge_base
 from src.settings import get_settings
 
@@ -67,6 +68,9 @@ def _build(
         model=get_text_llm().chat_model(),
         tools=get_tools(web_search),
         system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
+        # Passed as a bare schema so LangChain picks the provider's native
+        # structured output where it has one, and a forced tool call where not.
+        response_format=AgentReply,
         middleware=[_answer_when_out_of_steps, _log_tool_call],
         name="rag_agent",
     )
@@ -89,7 +93,7 @@ async def _answer_when_out_of_steps(
     return await handler(
         request.override(
             messages=[*request.messages, HumanMessage(content=OUT_OF_STEPS_PROMPT)],
-            tool_choice="none",
+            tools=[],
         )
     )
 
@@ -124,7 +128,7 @@ async def answer(
         return await _run(question, history, web_search)
     except Exception:
         logger.exception("The run failed. Answering with the standing message.")
-        return AgentAnswer(text=TROUBLE_ANSWER, transcript="[]")
+        return AgentAnswer(text=TROUBLE_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND)
 
 
 async def _run(
@@ -144,20 +148,28 @@ async def _run(
         # settled, and saying which is the difference between "try again" and
         # "ask something narrower".
         logger.warning("The question took too many steps to settle.")
-        return AgentAnswer(text=TOO_MANY_STEPS_ANSWER, transcript="[]")
+        return AgentAnswer(
+            text=TOO_MANY_STEPS_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND
+        )
 
     messages: list[BaseMessage] = result["messages"]
     _log_tool_calls(messages)
     _log_models(messages)
 
-    text = _text(messages[-1]).strip()
-    if not text:
-        # The run finished and said nothing. Nothing to show, so say so rather
-        # than hand back a blank bubble.
-        logger.warning("The run finished with an empty answer.")
-        return AgentAnswer(text=TROUBLE_ANSWER, transcript=_transcript(messages))
+    transcript = _transcript(messages)
 
-    return AgentAnswer(text=text, transcript=_transcript(messages))
+    reply = result.get("structured_response")
+    if not isinstance(reply, AgentReply) or not reply.response.strip():
+        # The run finished without a usable reply. Nothing to show, so say so
+        # rather than hand back a blank bubble.
+        logger.warning("The run finished without a structured reply.")
+        return AgentAnswer(
+            text=TROUBLE_ANSWER, transcript=transcript, status=AnswerStatus.NOT_FOUND
+        )
+
+    logger.info("Answer status: %s", reply.status)
+
+    return AgentAnswer(text=reply.response.strip(), transcript=transcript, status=reply.status)
 
 
 def _conversation(question: str, history: list[HistoryMessage]) -> list[BaseMessage]:

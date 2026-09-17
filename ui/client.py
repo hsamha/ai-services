@@ -25,6 +25,7 @@ from src.features.rag import ingest
 from src.features.rag import service as rag_service
 from src.features.rag.collections import ensure_collections
 from ui.schemas import (
+    AnswerStatus,
     AskRequest,
     AskResponse,
     ChatRole,
@@ -194,6 +195,8 @@ class ChatTurn(BaseModel):
     model: str = ""
     # The whole run as JSON. Empty on anything the user said.
     transcript: str = ""
+    # How the answer turned out. Always answered for what the user said.
+    status: AnswerStatus = AnswerStatus.ANSWERED
 
     def to_history(self) -> HistoryMessage:
         return HistoryMessage(role=self.role, content=self.content)

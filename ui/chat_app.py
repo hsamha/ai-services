@@ -9,7 +9,7 @@ from concurrent.futures import Future, TimeoutError as FutureTimeout
 
 import streamlit as st
 
-from ui.schemas import AskResponse, ChatRole
+from ui.schemas import AnswerStatus, AskResponse, ChatRole
 from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, submit
 from ui.settings import get_ui_settings
@@ -98,10 +98,17 @@ h1.app-title,
 }
 /* Make room for it, so the input does not sit flush on top of the text. */
 [data-testid="stBottomBlockContainer"] { padding-bottom: 2.5rem; }
+/* An answer the knowledge base could not give. Streamlit turns a container's
+   key into an `st-key-<key>` class, which is the only handle it offers. */
+[class*="st-key-not-found-"] {
+    border: 1px solid #e5484d;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
 </style>
 """
 
-AVATARS: dict[ChatRole, str] = {ChatRole.USER: "🧑", ChatRole.ASSISTANT: "✨"}
+AVATARS: dict[ChatRole, str] ={ChatRole.USER: "🧑", ChatRole.ASSISTANT: "✨"}
 
 # What the status line says while an answer is out, in the order the agent
 # roughly works through: it reads the question, searches, reads what came back,
@@ -187,9 +194,20 @@ def render_transcript(transcript: str) -> None:
         st.json(messages, expanded=2)
 
 
-def render_turn(turn: ChatTurn) -> None:
+def render_content(content: str, status: AnswerStatus, position: int) -> None:
+    """The message text, framed in red when the agent could not answer."""
+    if status is AnswerStatus.ANSWERED:
+        st.markdown(content)
+        return
+
+    # The key only has to be unique on the page; the turn's position is.
+    with st.container(key=f"not-found-{position}"):
+        st.markdown(content)
+
+
+def render_turn(turn: ChatTurn, position: int) -> None:
     with st.chat_message(turn.role.value, avatar=AVATARS[turn.role]):
-        st.markdown(turn.content)
+        render_content(turn.content, turn.status, position)
         if turn.model:
             st.caption(turn.model)
         if showing_transcript():
@@ -197,8 +215,8 @@ def render_turn(turn: ChatTurn) -> None:
 
 
 def render_history(state: ChatState) -> None:
-    for turn in state.turns:
-        render_turn(turn)
+    for position, turn in enumerate(state.turns):
+        render_turn(turn, position)
 
 
 def answer(client: RAGClient, state: ChatState, question: str) -> None:
@@ -230,7 +248,7 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
             # Drop the question again, so a retry is not sent twice.
             state.turns.pop()
             return
-        st.markdown(response.answer)
+        render_content(response.answer, response.status, len(state.turns))
         st.caption(response.model)
         if showing_transcript():
             render_transcript(response.transcript)
@@ -241,6 +259,7 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
             content=response.answer,
             model=response.model,
             transcript=response.transcript,
+            status=response.status,
         )
     )
 

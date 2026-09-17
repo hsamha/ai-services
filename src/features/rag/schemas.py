@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.core.types import Chunk, Metadata, SearchHit
 from src.core.tools.enums import FileType
-from src.features.rag.constants import ChatRole
+from src.features.rag.constants import AnswerStatus, ChatRole
 
 
 def _new_id() -> str:
@@ -249,17 +249,34 @@ class AskRequest(BaseModel):
     web_search: bool = False
 
 
+class AgentReply(BaseModel):
+    """The shape the agent must reply in. Its field descriptions are read by the model."""
+
+    response: str = Field(
+        description="The reply to show the reader, in Markdown, following every rule you were given."
+    )
+    status: AnswerStatus = Field(
+        description=(
+            "answered: answered from the passages, even in part, or a reply to a "
+            "greeting or a question about you. not_found: could not answer -- "
+            "nothing relevant came back, off-topic, or too vague to search."
+        )
+    )
+
+
 class AgentAnswer(BaseModel):
     """What the agent settled on, and the whole run behind it."""
 
     text: str
     transcript: str
+    status: AnswerStatus
 
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
+    status: AnswerStatus = AnswerStatus.ANSWERED
     # Every message of the run, as JSON: the question, what the model said, each
     # tool call and what it returned. A string, because a message is whatever
     # its provider makes it and there is no one shape to promise.

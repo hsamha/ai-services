@@ -37,6 +37,11 @@ class Settings(BaseSettings):
 
     max_agent_steps: int = 6
 
+    # The agent's confidence (0..1) at or above which its reply counts as
+    # answered. Below it the question is not found, and goes to the web when
+    # the caller asked for web search.
+    rag_min_confidence: float = 0.7
+
     timezone: str = "Asia/Amman"
 
     # Where the constitution was split to, relative to the project root.

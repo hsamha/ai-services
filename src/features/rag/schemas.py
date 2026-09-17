@@ -245,15 +245,9 @@ class AskRequest(BaseModel):
 class AgentReply(BaseModel):
     """The shape the agent must reply in. Its field descriptions are read by the model."""
 
-    response: str = Field(
-        description="The reply to show the reader, in Markdown, following every rule you were given."
-    )
-    status: AnswerStatus = Field(
-        description=(
-            "answered: answered from the passages, even in part, or a reply to a "
-            "greeting or a question about you. not_found: could not answer -- "
-            "nothing relevant came back, off-topic, or too vague to search."
-        )
+    response: str = Field(description="The reply to show the user, in Markdown.")
+    confidence: float = Field(
+        description="0.0-1.0: how fully the response answers the question from the passages."
     )
 
 
@@ -263,6 +257,8 @@ class AgentAnswer(BaseModel):
     text: str
     transcript: str
     status: AnswerStatus
+    # The agent's own confidence (0..1). None when the run gave no reply.
+    confidence: float | None = None
 
 
 class AskResponse(BaseModel):
@@ -270,6 +266,9 @@ class AskResponse(BaseModel):
     answer: str
     model: str
     status: AnswerStatus = AnswerStatus.ANSWERED
+    # Answered when this is at or above `rag_min_confidence`. None when the run
+    # gave no reply.
+    confidence: float | None = None
     # Every message of the run, as JSON: the question, what the model said, each
     # tool call and what it returned. A string, because a message is whatever
     # its provider makes it and there is no one shape to promise.

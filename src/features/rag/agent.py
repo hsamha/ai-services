@@ -63,7 +63,10 @@ def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> Compile
     return create_agent(
         model=get_text_llm().chat_model(),
         tools=get_tools(),
-        system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
+        system_prompt=SYSTEM_PROMPT.format(
+            answer_language=answer_language,
+            min_confidence=get_settings().rag_min_confidence,
+        ),
         # Passed as a bare schema so LangChain picks the provider's native
         # structured output where it has one, and a forced tool call where not.
         response_format=AgentReply,
@@ -165,9 +168,10 @@ async def answer(
         settled = AgentAnswer(text=TROUBLE_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND)
 
     logger.info(
-        "── DONE in %.1fs: %s (%d chars)",
+        "── DONE in %.1fs: %s (confidence %s, %d chars)",
         time.perf_counter() - started,
         settled.status,
+        "n/a" if settled.confidence is None else f"{settled.confidence:.2f}",
         len(settled.text),
     )
     logger.info(_DELIMITER)
@@ -210,12 +214,27 @@ async def _run(
             text=TROUBLE_ANSWER, transcript=transcript, status=AnswerStatus.NOT_FOUND
         )
 
-    logger.info("  rag       %s", reply.status)
+    confidence = min(max(reply.confidence, 0.0), 1.0)
+    threshold = get_settings().rag_min_confidence
+    found = confidence >= threshold
+    logger.info(
+        "  rag       %s (confidence %.2f, threshold %.2f)",
+        "found" if found else "not found",
+        confidence,
+        threshold,
+    )
 
-    if web_search and reply.status is AnswerStatus.NOT_FOUND:
-        return await _answer_from_web(question, history, answer_language, messages)
+    rag_answer = AgentAnswer(
+        text=reply.response.strip(),
+        transcript=transcript,
+        status=AnswerStatus.ANSWERED if found else AnswerStatus.NOT_FOUND,
+        confidence=confidence,
+    )
 
-    return AgentAnswer(text=reply.response.strip(), transcript=transcript, status=reply.status)
+    if found or not web_search:
+        return rag_answer
+
+    return await _answer_from_web(question, history, answer_language, messages, rag_answer)
 
 
 async def _answer_from_web(
@@ -223,7 +242,12 @@ async def _answer_from_web(
     history: list[HistoryMessage],
     answer_language: AnswerLanguage,
     messages: list[BaseMessage],
+    rag_answer: AgentAnswer,
 ) -> AgentAnswer:
+    """The knowledge base did not have the answer, so the web answers instead.
+
+    When the web gives nothing, the agent's own reply stands.
+    """
 
     limit = get_settings().max_history_messages
     recent = history[-limit:] if limit > 0 else []
@@ -233,15 +257,13 @@ async def _answer_from_web(
         question=question,
     )
 
-    logger.info("  fallback  knowledge base had nothing, trying the web")
+    logger.info("  fallback  knowledge base fell short, trying the web")
 
     try:
         found = await openai_web_search.search(text)
     except HTTPException:
-        # The web search logged why; the run just ends with the standing message.
-        return AgentAnswer(
-            text=TROUBLE_ANSWER, transcript=_transcript(messages), status=AnswerStatus.NOT_FOUND
-        )
+        # The web search logged why.
+        return rag_answer
 
     # Kept in the transcript as the step it was, so a run reads end to end.
     web_step = AIMessage(content=found.result, name="openai_web_search")
@@ -249,12 +271,15 @@ async def _answer_from_web(
 
     if not found.result:
         logger.warning("  fallback  the web came back empty")
-        return AgentAnswer(
-            text=TROUBLE_ANSWER, transcript=transcript, status=AnswerStatus.NOT_FOUND
-        )
+        return rag_answer.model_copy(update={"transcript": transcript})
 
     logger.info("  fallback  answered from the web")
-    return AgentAnswer(text=found.result, transcript=transcript, status=AnswerStatus.ANSWERED)
+    return AgentAnswer(
+        text=found.result,
+        transcript=transcript,
+        status=AnswerStatus.ANSWERED,
+        confidence=rag_answer.confidence,
+    )
 
 
 def _conversation(question: str, history: list[HistoryMessage]) -> list[BaseMessage]:

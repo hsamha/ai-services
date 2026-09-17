@@ -64,15 +64,7 @@ async def search(text: str) -> WebSearchResponse:
         ) from error
 
     result = _strip_tracking(response.output_text).strip()
-    # How many searches the model actually ran: zero means it answered from
-    # memory, which is worth seeing.
-    searches = sum(1 for item in response.output if item.type == "web_search_call")
-    logger.info(
-        "  websearch <- %d searches, %d chars, %.1fs",
-        searches,
-        len(result),
-        time.perf_counter() - started,
-    )
+    logger.info("  websearch <- %d chars, %.1fs", len(result), time.perf_counter() - started)
 
     return WebSearchResponse(text=text, result=result, model=model)
 

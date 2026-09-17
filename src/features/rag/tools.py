@@ -135,12 +135,11 @@ async def expand_chunk(chunk_id: str, window: int = 1) -> str:
 
 @tool(parse_docstring=True)
 async def get_material(number: int) -> str:
-    """Read one numbered article (مادة) of the constitution, in full.
+    """Read one numbered article (مادة) of the Jordanian Constitution, in full.
 
-    Use this whenever a question names an article by its number, or when a
-    passage you have read cites one -- it gives back that article whole, so
-    nothing is cut off the way a search hit can be. Ask for the articles a
-    citation names rather than guessing what they say.
+    Only the Jordanian Constitution (الدستور الأردني) -- never use it for an
+    article of any other law. Use it when a question names a constitution
+    article by number, or a passage cites one; it returns the article whole.
 
     Args:
         number: The article number as the text writes it, so 96 for
@@ -152,12 +151,12 @@ async def get_material(number: int) -> str:
 
 @tool(parse_docstring=True)
 async def get_section(number: int) -> str:
-    """Read one numbered chapter (فصل) of the constitution, in full.
+    """Read one numbered chapter (فصل) of the Jordanian Constitution, in full.
 
-    A chapter holds every article on one subject -- rights, the executive, the
-    judiciary -- so use this when a question is about a whole topic rather than
-    a single article, or to see which articles a chapter covers before reading
-    them one by one. Chapters are long; prefer an article when you know which.
+    Only the Jordanian Constitution (الدستور الأردني) -- never use it for any
+    other law. A chapter holds every article on one subject (rights, the
+    executive, the judiciary); use it for a whole topic. Chapters are long, so
+    prefer get_material when you know the article.
 
     Args:
         number: The chapter number, counting from one in the order the

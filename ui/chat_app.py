@@ -14,7 +14,7 @@ from ui.client import APIError, ChatState, ChatTurn, RAGClient
 from ui.common import connection_sidebar, submit
 from ui.settings import get_ui_settings
 
-st.set_page_config(page_title="Jordanian Constitution Assistant", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Jordanian Law Assistant", page_icon="📚", layout="centered")
 
 CHAT_KEY = "chat_state"
 TRANSCRIPT_KEY = "show_transcript"
@@ -33,12 +33,12 @@ NO_KEY_REPLY = (
     "only for your own questions, and never stored."
 )
 
-TITLE = "📚 Jordanian Constitution Assistant"
+TITLE = "📚 Jordanian Law Assistant"
 
 # Sits under the title, saying in one line what the assistant is for. The
 # `{link}` is filled with the source link, so the name of the text doubles as
 # the way to reach the official wording.
-SUBTITLE = "Ask and get answers about the {link}"
+SUBTITLE = "Ask about Jordanian law — trained on the {link} only."
 
 LINK_TEXT = "Jordanian Constitution"
 
@@ -296,7 +296,7 @@ def main() -> None:
     render_history(state)
 
     question = st.chat_input(
-        "Thinking…" if busy else "Ask something about Jordanian constitution",
+        "Thinking…" if busy else "Ask something about Jordanian law",
         max_chars=255,
         disabled=busy,
     )

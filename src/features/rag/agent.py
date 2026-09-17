@@ -36,13 +36,15 @@ logger = logging.getLogger(__name__)
 
 _RULE = "─" * 22
 
-def get_agent(answer_language: AnswerLanguage) -> CompiledStateGraph:
+def get_agent(answer_language: AnswerLanguage, web_search: bool) -> CompiledStateGraph:
     """The agent for the request being handled, set to answer in one language."""
-    return _build(get_context().provider_key, get_text_llm_name(), answer_language)
+    return _build(get_context().provider_key, get_text_llm_name(), answer_language, web_search)
 
 
 @lru_cache(maxsize=32)
-def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> CompiledStateGraph:
+def _build(
+    api_key: str, model: str, answer_language: AnswerLanguage, web_search: bool
+) -> CompiledStateGraph:
     """One agent per caller, model and language. Building it compiles a graph, so it is kept.
 
     The first two arguments are not read: the agent is built from the request
@@ -57,10 +59,13 @@ def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> Compile
     The language is baked into the system prompt rather than asked for in the
     conversation, so it reads as a standing rule instead of one more thing the
     model was told once and can drift away from.
+
+    Whether the caller asked for web search changes the tools, so it is part of
+    the key too.
     """
     return create_agent(
         model=get_text_llm().chat_model(),
-        tools=get_tools(),
+        tools=get_tools(web_search),
         system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
         middleware=[_answer_when_out_of_steps, _log_tool_call],
         name="rag_agent",
@@ -105,7 +110,9 @@ async def _log_tool_call(
     return result
 
 
-async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
+async def answer(
+    question: str, history: list[HistoryMessage], web_search: bool
+) -> AgentAnswer:
     """Put the question to the agent, with the passages it leaned on.
 
     A run that cannot finish still answers. Whatever went wrong -- the provider
@@ -114,19 +121,21 @@ async def answer(question: str, history: list[HistoryMessage]) -> AgentAnswer:
     code and an empty screen. The exception itself is logged in full.
     """
     try:
-        return await _run(question, history)
+        return await _run(question, history, web_search)
     except Exception:
         logger.exception("The run failed. Answering with the standing message.")
         return AgentAnswer(text=TROUBLE_ANSWER, transcript="[]")
 
 
-async def _run(question: str, history: list[HistoryMessage]) -> AgentAnswer:
+async def _run(
+    question: str, history: list[HistoryMessage], web_search: bool
+) -> AgentAnswer:
     """The question put to the agent, for real."""
     answer_language = await language.detect(question)
     logger.info("Answering in %s", answer_language)
 
     try:
-        result = await get_agent(answer_language).ainvoke(
+        result = await get_agent(answer_language, web_search).ainvoke(
             {"messages": _conversation(question, history)},
             config={"recursion_limit": get_settings().max_agent_steps * 2},
         )

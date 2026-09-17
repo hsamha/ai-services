@@ -246,6 +246,7 @@ class HistoryMessage(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=255)
     history: list[HistoryMessage] = Field(default_factory=list)
+    web_search: bool = False
 
 
 class AgentAnswer(BaseModel):

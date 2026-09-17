@@ -290,7 +290,12 @@ def _serves_openai(model: str) -> bool:
     return PROVIDER_BY_MODEL.get(model) is LLMProvider.OPENAI
 
 
-def get_tools() -> list[BaseTool]:
+def web_search_available() -> bool:
+    """Whether web search is switched on and the current model can run it."""
+    return get_settings().tool_openai_web_search and _serves_openai(get_text_llm_name())
+
+
+def get_tools(web_search: bool) -> list[BaseTool]:
 
     settings = get_settings()
 
@@ -303,10 +308,7 @@ def get_tools() -> list[BaseTool]:
         (settings.tool_get_section, get_section),
         (settings.tool_current_datetime, current_datetime),
         (settings.tool_translate, translate),
-        (
-            settings.tool_openai_web_search and _serves_openai(get_text_llm_name()),
-            openai_web_search,
-        ),
+        (web_search and web_search_available(), openai_web_search),
     ]
 
     return [tool_ for enabled, tool_ in wanted if enabled]

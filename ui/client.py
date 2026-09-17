@@ -156,12 +156,19 @@ class RAGClient(BaseModel):
             )
         )
 
-    async def ask(self, question: str, history: list[HistoryMessage] | None = None) -> AskResponse:
+    async def ask(
+        self,
+        question: str,
+        history: list[HistoryMessage] | None = None,
+        web_search: bool = False,
+    ) -> AskResponse:
         # Asking spends the caller's own provider key, so it cannot go without one.
         if not self.provider_key:
             raise APIError(status.HTTP_401_UNAUTHORIZED, "An AI provider key is needed to ask.")
         return await self._call(
-            lambda: rag_service.ask(AskRequest(question=question, history=history or []))
+            lambda: rag_service.ask(
+                AskRequest(question=question, history=history or [], web_search=web_search)
+            )
         )
 
     async def list_models(self) -> ModelsResponse:

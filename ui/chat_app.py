@@ -18,6 +18,7 @@ st.set_page_config(page_title="Jordanian Constitution Assistant", page_icon="ðŸ“
 
 CHAT_KEY = "chat_state"
 TRANSCRIPT_KEY = "show_transcript"
+WEB_SEARCH_KEY = "web_search"
 BUSY_KEY = "answering"
 PENDING_KEY = "pending_question"
 
@@ -222,7 +223,8 @@ def answer(client: RAGClient, state: ChatState, question: str) -> None:
 
     with st.chat_message(ChatRole.ASSISTANT.value, avatar=AVATARS[ChatRole.ASSISTANT]):
         try:
-            response = await_answer(submit(client.ask(question, history)))
+            web_search = bool(st.session_state.get(WEB_SEARCH_KEY, False))
+            response = await_answer(submit(client.ask(question, history, web_search)))
         except APIError as error:
             st.error(error.detail)
             # Drop the question again, so a retry is not sent twice.
@@ -264,6 +266,9 @@ def main() -> None:
         if st.button("Clear chat", width="stretch", disabled=busy):
             st.session_state[CHAT_KEY] = ChatState()
             st.rerun()
+        # The service refuses the search when the model cannot run it, and the
+        # reason shows as an error under the question.
+        st.toggle("Search the web", value=False, key=WEB_SEARCH_KEY, disabled=busy)
         if get_ui_settings().show_transcript:
             st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
 

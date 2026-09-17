@@ -218,13 +218,6 @@ class Translation(BaseModel):
     source_language: str | None = None
 
 
-class WebSearchResult(BaseModel):
-    """What the web was asked, and what came back."""
-
-    query: str
-    answer: str
-
-
 class ToolFailure(BaseModel):
     """A tool that could not do what it was asked, told to the model as a result.
 

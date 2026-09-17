@@ -1,17 +1,13 @@
-import logging
 from collections.abc import Awaitable
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
 from langchain_core.tools import BaseTool, tool
-from openai import AsyncOpenAI, OpenAIError
+from openai import OpenAIError
 from pydantic import BaseModel
 
-from src.context import get_context
-from src.core.llm.constants import PROVIDER_BY_MODEL
-from src.core.llm.enums import LLMProvider
-from src.core.llm.factory import get_text_llm, get_text_llm_name
+from src.core.llm.factory import get_text_llm
 from src.features.rag import corpus, service
 from src.features.rag.prompts import TRANSLATE_PROMPT
 from src.features.rag.schemas import (
@@ -19,12 +15,8 @@ from src.features.rag.schemas import (
     SearchRequest,
     ToolFailure,
     Translation,
-    WebSearchResult,
 )
 from src.settings import get_settings
-
-
-logger = logging.getLogger(__name__)
 
 
 def _as_json(payload: BaseModel) -> str:
@@ -50,11 +42,9 @@ async def _result(call: Awaitable[BaseModel]) -> str:
     try:
         payload = await call
     except HTTPException as error:
-        logger.info("Tool failed: %s", error.detail)
         return _as_json(ToolFailure(error=str(error.detail)))
 
     if _is_empty(payload):
-        logger.info("Tool found nothing: %s", type(payload).__name__)
         return _as_json(
             ToolFailure(
                 error="Nothing found. The knowledge base does not hold this -- "
@@ -251,51 +241,7 @@ async def _translate(
     )
 
 
-@tool(parse_docstring=True)
-async def openai_web_search(query: str) -> str:
-    """Search the public web for something the knowledge base does not hold.
-
-    Use this only once the knowledge base has come up short, and say in your
-    answer which parts came from the web rather than from the documents. It
-    reaches the open internet, so it knows nothing about the private documents
-    and must never be used to look for them.
-
-    Args:
-        query: What to look up, in full and in plain words.
-    """
-    return await _result(_web_search(query))
-
-
-async def _web_search(query: str) -> WebSearchResult:
-    """What the open web says, through OpenAI's own hosted search tool."""
-    client = AsyncOpenAI(api_key=get_context().provider_key)
-
-    try:
-        response = await client.responses.create(
-            model=get_text_llm_name(),
-            tools=[{"type": "web_search"}],
-            input=query,
-        )
-    except OpenAIError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"The web search failed: {error}",
-        ) from error
-
-    return WebSearchResult(query=query, answer=response.output_text.strip())
-
-
-def _serves_openai(model: str) -> bool:
-    """Whether this model is one OpenAI serves, and so can run a hosted tool."""
-    return PROVIDER_BY_MODEL.get(model) is LLMProvider.OPENAI
-
-
-def web_search_available() -> bool:
-    """Whether web search is switched on and the current model can run it."""
-    return get_settings().tool_openai_web_search and _serves_openai(get_text_llm_name())
-
-
-def get_tools(web_search: bool) -> list[BaseTool]:
+def get_tools() -> list[BaseTool]:
 
     settings = get_settings()
 
@@ -308,7 +254,6 @@ def get_tools(web_search: bool) -> list[BaseTool]:
         (settings.tool_get_section, get_section),
         (settings.tool_current_datetime, current_datetime),
         (settings.tool_translate, translate),
-        (web_search and web_search_available(), openai_web_search),
     ]
 
     return [tool_ for enabled, tool_ in wanted if enabled]

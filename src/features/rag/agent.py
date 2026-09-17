@@ -1,8 +1,10 @@
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from functools import lru_cache
 
+from fastapi import HTTPException
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     ModelRequest,
@@ -19,6 +21,7 @@ from langgraph.types import Command
 from src.context import get_context
 from src.core.embeddings.factory import get_embedding_model_name
 from src.core.llm.factory import get_text_llm, get_text_llm_name
+from src.features.openai_web_search import service as openai_web_search
 from src.features.rag import language
 from src.features.rag.constants import (
     TOO_MANY_STEPS_ANSWER,
@@ -27,25 +30,24 @@ from src.features.rag.constants import (
     AnswerStatus,
     ChatRole,
 )
-from src.features.rag.prompts import OUT_OF_STEPS_PROMPT, SYSTEM_PROMPT
+from src.features.rag.prompts import OUT_OF_STEPS_PROMPT, SYSTEM_PROMPT, WEB_ANSWER_PROMPT
 from src.features.rag.schemas import AgentAnswer, AgentReply, HistoryMessage
-from src.features.rag.tools import get_tools, search_knowledge_base
+from src.features.rag.tools import get_tools
 from src.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
 
-_RULE = "─" * 22
+_DELIMITER = "═" * 80
 
-def get_agent(answer_language: AnswerLanguage, web_search: bool) -> CompiledStateGraph:
+
+def get_agent(answer_language: AnswerLanguage) -> CompiledStateGraph:
     """The agent for the request being handled, set to answer in one language."""
-    return _build(get_context().provider_key, get_text_llm_name(), answer_language, web_search)
+    return _build(get_context().provider_key, get_text_llm_name(), answer_language)
 
 
 @lru_cache(maxsize=32)
-def _build(
-    api_key: str, model: str, answer_language: AnswerLanguage, web_search: bool
-) -> CompiledStateGraph:
+def _build(api_key: str, model: str, answer_language: AnswerLanguage) -> CompiledStateGraph:
     """One agent per caller, model and language. Building it compiles a graph, so it is kept.
 
     The first two arguments are not read: the agent is built from the request
@@ -54,19 +56,13 @@ def _build(
     without them every caller after the first would be handed an agent spending
     someone else's key.
 
-    The model is part of the key for a second reason: which tools an agent is
-    given depends on it, since a hosted tool only runs on its own provider.
-
     The language is baked into the system prompt rather than asked for in the
     conversation, so it reads as a standing rule instead of one more thing the
     model was told once and can drift away from.
-
-    Whether the caller asked for web search changes the tools, so it is part of
-    the key too.
     """
     return create_agent(
         model=get_text_llm().chat_model(),
-        tools=get_tools(web_search),
+        tools=get_tools(),
         system_prompt=SYSTEM_PROMPT.format(answer_language=answer_language),
         # Passed as a bare schema so LangChain picks the provider's native
         # structured output where it has one, and a forced tool call where not.
@@ -88,7 +84,7 @@ async def _answer_when_out_of_steps(
     if rounds < get_settings().max_agent_steps - 1:
         return await handler(request)
 
-    logger.warning("Search budget spent after %d tool rounds. Answering from what was found.", rounds)
+    logger.warning("  limit     %d tool rounds used, answering from what was found", rounds)
 
     return await handler(
         request.override(
@@ -104,14 +100,44 @@ async def _log_tool_call(
     handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
 ) -> ToolMessage | Command:
     call = request.tool_call
-    logger.info("TOOL  ->  %s(%s)", call["name"], json.dumps(call["args"], ensure_ascii=False))
+    args = ", ".join(
+        f"{name}={_short(json.dumps(value, ensure_ascii=False), 60)}"
+        for name, value in call["args"].items()
+    )
+    logger.info("  tool      -> %s(%s)", call["name"], args)
 
     result = await handler(request)
 
     if isinstance(result, ToolMessage):
-        logger.info("TOOL  <-  %s returned %d characters", call["name"], len(_text(result)))
+        logger.info("  tool      <- %s", _outcome(_text(result)))
 
     return result
+
+
+def _outcome(output: str) -> str:
+    """What a tool gave back, in a few words: a count, a failure, or its size."""
+    try:
+        payload = json.loads(output)
+    except ValueError:
+        return f"{len(output)} chars"
+
+    if not isinstance(payload, dict):
+        return f"{len(output)} chars"
+    if "error" in payload:
+        error = str(payload["error"])
+        if error.startswith("Nothing found"):
+            return "nothing found"
+        return f"FAILED: {_short(error, 80)}"
+    for name in ("hits", "chunks"):
+        if isinstance(payload.get(name), list):
+            return f"{len(payload[name])} {name}"
+    return f"{len(output)} chars"
+
+
+def _short(text: str, limit: int) -> str:
+    """One line, cut to a length a log can carry."""
+    line = " ".join(text.split())
+    return line if len(line) <= limit else line[: limit - 1] + "…"
 
 
 async def answer(
@@ -124,11 +150,28 @@ async def answer(
     in a chat box, and they get one plain line saying so rather than a status
     code and an empty screen. The exception itself is logged in full.
     """
+    logger.info(
+        "── QUESTION %r (history: %d, web search: %s)",
+        _short(question, 80),
+        len(history),
+        "on" if web_search else "off",
+    )
+    started = time.perf_counter()
+
     try:
-        return await _run(question, history, web_search)
+        settled = await _run(question, history, web_search)
     except Exception:
-        logger.exception("The run failed. Answering with the standing message.")
-        return AgentAnswer(text=TROUBLE_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND)
+        logger.exception("  error     the run failed, answering with the standing message")
+        settled = AgentAnswer(text=TROUBLE_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND)
+
+    logger.info(
+        "── DONE in %.1fs: %s (%d chars)",
+        time.perf_counter() - started,
+        settled.status,
+        len(settled.text),
+    )
+    logger.info(_DELIMITER)
+    return settled
 
 
 async def _run(
@@ -136,10 +179,13 @@ async def _run(
 ) -> AgentAnswer:
     """The question put to the agent, for real."""
     answer_language = await language.detect(question)
-    logger.info("Answering in %s", answer_language)
+    logger.info("  language  %s", answer_language)
+    logger.info(
+        "  model     %s (embedding: %s)", get_text_llm_name(), get_embedding_model_name()
+    )
 
     try:
-        result = await get_agent(answer_language, web_search).ainvoke(
+        result = await get_agent(answer_language).ainvoke(
             {"messages": _conversation(question, history)},
             config={"recursion_limit": get_settings().max_agent_steps * 2},
         )
@@ -147,29 +193,68 @@ async def _run(
         # Not a failure of ours to hide: the agent kept searching and never
         # settled, and saying which is the difference between "try again" and
         # "ask something narrower".
-        logger.warning("The question took too many steps to settle.")
+        logger.warning("  error     too many steps, the agent never settled")
         return AgentAnswer(
             text=TOO_MANY_STEPS_ANSWER, transcript="[]", status=AnswerStatus.NOT_FOUND
         )
 
     messages: list[BaseMessage] = result["messages"]
-    _log_tool_calls(messages)
-    _log_models(messages)
-
     transcript = _transcript(messages)
 
     reply = result.get("structured_response")
     if not isinstance(reply, AgentReply) or not reply.response.strip():
         # The run finished without a usable reply. Nothing to show, so say so
         # rather than hand back a blank bubble.
-        logger.warning("The run finished without a structured reply.")
+        logger.warning("  error     the agent gave no usable reply")
         return AgentAnswer(
             text=TROUBLE_ANSWER, transcript=transcript, status=AnswerStatus.NOT_FOUND
         )
 
-    logger.info("Answer status: %s", reply.status)
+    logger.info("  rag       %s", reply.status)
+
+    if web_search and reply.status is AnswerStatus.NOT_FOUND:
+        return await _answer_from_web(question, history, answer_language, messages)
 
     return AgentAnswer(text=reply.response.strip(), transcript=transcript, status=reply.status)
+
+
+async def _answer_from_web(
+    question: str,
+    history: list[HistoryMessage],
+    answer_language: AnswerLanguage,
+    messages: list[BaseMessage],
+) -> AgentAnswer:
+
+    limit = get_settings().max_history_messages
+    recent = history[-limit:] if limit > 0 else []
+    text = WEB_ANSWER_PROMPT.format(
+        answer_language=answer_language,
+        history="\n".join(f"{turn.role.value}: {turn.content}" for turn in recent),
+        question=question,
+    )
+
+    logger.info("  fallback  knowledge base had nothing, trying the web")
+
+    try:
+        found = await openai_web_search.search(text)
+    except HTTPException:
+        # The web search logged why; the run just ends with the standing message.
+        return AgentAnswer(
+            text=TROUBLE_ANSWER, transcript=_transcript(messages), status=AnswerStatus.NOT_FOUND
+        )
+
+    # Kept in the transcript as the step it was, so a run reads end to end.
+    web_step = AIMessage(content=found.result, name="openai_web_search")
+    transcript = _transcript([*messages, web_step])
+
+    if not found.result:
+        logger.warning("  fallback  the web came back empty")
+        return AgentAnswer(
+            text=TROUBLE_ANSWER, transcript=transcript, status=AnswerStatus.NOT_FOUND
+        )
+
+    logger.info("  fallback  answered from the web")
+    return AgentAnswer(text=found.result, transcript=transcript, status=AnswerStatus.ANSWERED)
 
 
 def _conversation(question: str, history: list[HistoryMessage]) -> list[BaseMessage]:
@@ -204,47 +289,6 @@ def _text(message: BaseMessage) -> str:
             parts.append(str(part.get("text", "")))
 
     return "".join(parts)
-
-
-def _log_tool_calls(messages: list[BaseMessage]) -> None:
-    """Write down which tools the agent reached for, and what each gave back.
-
-    A call and its result are two separate messages, so both are logged as they
-    are met -- in the order the agent worked -- rather than paired up.
-    """
-    logger.info("%s TOOL CALLS %s", _RULE, _RULE)
-
-    for message in messages:
-        if isinstance(message, AIMessage):
-            for call in message.tool_calls:
-                logger.info("  ->  %s(%s)", call["name"], call["args"])
-        elif isinstance(message, ToolMessage):
-            logger.info(
-                "  <-  %s returned %d characters", message.name, len(_text(message))
-            )
-
-    logger.info("%s", _RULE * 3)
-
-
-def _log_models(messages: list[BaseMessage]) -> None:
-    """Write down which models the answer took.
-
-    The chat model detects the language and runs the agent, so it is always
-    there. The embedding model only turns up when the agent searched the
-    knowledge base -- every other tool reads records by id.
-    """
-    searched = any(
-        call["name"] == search_knowledge_base.name
-        for message in messages
-        if isinstance(message, AIMessage)
-        for call in message.tool_calls
-    )
-
-    logger.info("%s MODELS %s", _RULE, _RULE)
-    logger.info("  chat       %s", get_text_llm_name())
-    if searched:
-        logger.info("  embedding  %s", get_embedding_model_name())
-    logger.info("%s", _RULE * 3)
 
 
 def _transcript(messages: list[BaseMessage]) -> str:

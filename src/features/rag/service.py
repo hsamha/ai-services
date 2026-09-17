@@ -130,14 +130,10 @@ async def delete_document(document_id: str) -> DeleteDocumentResponse:
 async def ask(body: AskRequest) -> AskResponse:
     """Put a question to the agent, with the whole run behind the reply."""
     from src.features.rag import agent
-    from src.features.rag.tools import web_search_available
+    from src.features.openai_web_search.service import ensure_available
 
-    if body.web_search and not web_search_available():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Web search is not available: the tool is switched off, "
-            "or the current model is not served by OpenAI.",
-        )
+    if body.web_search:
+        ensure_available()
 
     settled = await agent.answer(body.question, body.history, body.web_search)
 

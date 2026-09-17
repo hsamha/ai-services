@@ -287,7 +287,9 @@ def main() -> None:
             st.rerun()
         # The service refuses the search when the model cannot run it, and the
         # reason shows as an error under the question.
-        st.toggle("Search the web", value=False, key=WEB_SEARCH_KEY, disabled=busy)
+        # Never disabled: changing `disabled` makes Streamlit treat it as a new
+        # widget and reset it to off, so the question would go out without it.
+        st.toggle("Search the web", value=False, key=WEB_SEARCH_KEY)
         if get_ui_settings().show_transcript:
             st.toggle("Show the transcript", value=False, key=TRANSCRIPT_KEY)
 
